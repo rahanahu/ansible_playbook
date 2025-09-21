@@ -1,0 +1,20 @@
+- name: Install essential packages (Debian/Ubuntu)
+  apt:
+    name: 
+      - ripgrep
+      - gcc
+      - g++
+      - make
+      - build-essential
+      - gdb
+      - lldb
+      - cmake
+      - ninja-build
+      - pkg-config
+      - openssh-server
+      - clang
+      - llvm
+    state: present
+    update_cache: yes
+  become: true
+  when: ansible_os_family == "Debian"
