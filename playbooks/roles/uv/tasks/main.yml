@@ -1,0 +1,16 @@
+- name: Check if uv is installed
+  command: which uv
+  register: uv_check
+  changed_when: false
+  failed_when: false
+
+- name: Download uv install script
+  get_url:
+    url: https://astral.sh/uv/install.sh
+    dest: /tmp/uv_install.sh
+    mode: "0700"
+  when: uv_check.rc is defined and uv_check.rc != 0
+
+- name: Run uv install script
+  command: /tmp/uv_install.sh
+  when: uv_check.rc is defined and uv_check.rc != 0

@@ -1,0 +1,111 @@
+- name: Install zsh
+  apt:
+    name:
+      - zsh
+    state: present
+    update_cache: yes
+  become: yes
+
+- name: Deploy .zshrc
+  template:
+    src: .zshrc.j2
+    dest: "/home/{{ ansible_user_id }}/.zshrc"
+    owner: "{{ ansible_user_id }}"
+    group: "{{ ansible_user_id }}"
+    mode: "0644"
+
+- name: Ensure ~/.local/bin exists
+  file:
+    path: "/home/{{ ansible_user_id }}/.local/bin"
+    state: directory
+    owner: "{{ ansible_user_id }}"
+    group: "{{ ansible_user_id }}"
+    mode: "0755"
+
+- name: Download shelldon install script
+  get_url:
+    url: https://rossmacarthur.github.io/install/crate.sh
+    dest: /tmp/shelldon_install.sh
+    mode: "0700"
+
+- name: Run shelldon install script
+  command: /tmp/shelldon_install.sh --repo rossmacarthur/sheldon --to /home/{{ ansible_user_id }}/.local/bin
+  args:
+    creates: "/home/{{ ansible_user_id }}/.local/bin/sheldon"
+
+- name: Ensure sheldon config dir exists
+  file:
+    path: "/home/{{ ansible_user_id }}/.config/sheldon"
+    state: directory
+    owner: "{{ ansible_user_id }}"
+    group: "{{ ansible_user_id }}"
+    mode: "0700"
+  become: false
+
+- name: shelldon init
+  command: /home/{{ ansible_user_id }}/.local/bin/sheldon --non-interactive init --shell zsh
+  args:
+    creates: "/home/{{ ansible_user_id }}/.config/sheldon"
+
+- name: load sheldon plugin
+  lineinfile:
+    path: "/home/{{ ansible_user_id }}/.zshrc"
+    line: 'eval "$(sheldon source)"'
+    state: present
+
+- name: Ensure git is installed (Debian/Ubuntu)
+  apt:
+    name: git
+    state: present
+    update_cache: yes
+  when: ansible_os_family == "Debian"
+  become: yes
+
+- name: Clone fzf
+  git:
+    repo: https://github.com/junegunn/fzf.git
+    dest: "/home/{{ ansible_user_id }}/.fzf"
+    version: master
+    depth: 1
+    update: yes
+
+
+- name: Install fzf
+  command: >
+    /home/{{ ansible_user_id }}/.fzf/install --no-fish --key-bindings --completion
+  args:
+    creates: "/home/{{ ansible_user_id }}/.fzf/bin/fzf"
+  environment:
+    HOME: "/home/{{ ansible_user_id }}"
+    SHELL: "/usr/bin/zsh"
+
+- name: Ensure fzf bin dir is in PATH
+  lineinfile:
+    path: "/home/{{ ansible_user_id }}/.zshrc"
+    line: '[ -f ~/.fzf.zsh ] && source ~/.fzf.zsh'
+    state: present
+    create: yes
+    owner: "{{ ansible_user_id }}"
+    group: "{{ ansible_user_id }}"
+    mode: "0644"
+
+- name: Deploy .plugins.toml for sheldon
+  template:
+    src: plugins.toml.j2
+    dest: "/home/{{ ansible_user_id }}/.config/sheldon/plugins.toml"
+    owner: "{{ ansible_user_id }}"
+    group: "{{ ansible_user_id }}"
+    mode: "0644"
+  become: false
+
+- name: Ensure zsh is installed
+  package:
+    name: zsh
+    state: present
+  become: true
+
+- name: Change default shell to zsh for current user
+  user:
+    name: "{{ ansible_user_id }}"
+    shell: /bin/zsh
+  become: true

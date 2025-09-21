@@ -1,0 +1,53 @@
+- name: Install k3s (single node)
+  shell: |
+    curl -sfL https://get.k3s.io | sh -
+  args:
+    creates: /usr/local/bin/k3s
+
+- name: Ensure .kube directory exists
+  file:
+    path: "/home/{{ ansible_user_id }}/.kube"
+    state: directory
+    owner: "{{ ansible_user_id }}"
+    group: "{{ ansible_user_id }}"
+    mode: "0700"
+
+- name: Copy kubeconfig to user home
+  become: true
+  command: cp /etc/rancher/k3s/k3s.yaml /home/{{ ansible_user_id }}/.kube/config
+  args:
+    creates: "/home/{{ ansible_user_id }}/.kube/config"
+
+- name: Fix ownership and permissions of kubeconfig
+  file:
+    path: "/home/{{ ansible_user_id }}/.kube/config"
+    owner: "{{ ansible_user_id }}"
+    group: "{{ ansible_user_id }}"
+    mode: "0600"
+
+- name: Export KUBECONFIG for current session
+  shell: |
+    export KUBECONFIG=$HOME/.kube/config
+  args:
+    executable: /bin/bash
+  changed_when: false
+
+- name: Ensure KUBECONFIG is set in .bashrc
+  lineinfile:
+    path: "/home/{{ ansible_user_id }}/.bashrc"
+    line: 'export KUBECONFIG=$HOME/.kube/config'
+    state: present
+    create: yes
+    owner: "{{ ansible_user_id }}"
+    group: "{{ ansible_user_id }}"
+    mode: "0644"
+
+- name: Ensure KUBECONFIG is set in .zshrc
+  lineinfile:
+    path: "/home/{{ ansible_user_id }}/.zshrc"
+    line: 'export KUBECONFIG=$HOME/.kube/config'
+    state: present
+    create: yes
+    owner: "{{ ansible_user_id }}"
+    group: "{{ ansible_user_id }}"
+    mode: "0644"
