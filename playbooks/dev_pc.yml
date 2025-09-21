@@ -4,3 +4,4 @@
     - docker
     - uv
     - zsh
+    - nvm

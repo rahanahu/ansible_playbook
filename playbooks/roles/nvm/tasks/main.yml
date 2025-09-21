@@ -1,0 +1,59 @@
+- name: Check if nvm is installed
+  command: which nvm
+  register: nvm_check
+  changed_when: false
+  failed_when: false
+
+- name: Download uv install script
+  get_url:
+    url: https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh
+    dest: /tmp/nvm_install.sh
+    mode: "0700"
+  when: nvm_check.rc is defined and nvm_check.rc != 0
+
+- name: Run nvm install script
+  command: /tmp/nvm_install.sh
+  environment:
+    PROFILE: /dev/null
+    NVM_DIR: "/home/{{ ansible_user_id }}/.nvm"
+    HOME: "/home/{{ ansible_user_id }}"
+  when: nvm_check.rc is defined and nvm_check.rc != 0
+
+- name: Ensure nvm init lines exist in .zshrc
+  ansible.builtin.blockinfile:
+    path: "/home/{{ ansible_user_id }}/.zshrc"
+    marker: "# {mark} ANSIBLE MANAGED NVM"
+    create: yes
+    block: |
+      export NVM_DIR="$HOME/.nvm"
+      [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+      [ -s "$NVM_DIR/bash_completion" ] && . "$NVM_DIR/bash_completion"
+    owner: "{{ ansible_user_id }}"
+    group: "{{ ansible_user_id }}"
+    mode: "0644"
+  become: false
+
+- name: Ensure nvm init lines exist in .bashrc
+  ansible.builtin.blockinfile:
+    path: "/home/{{ ansible_user_id }}/.bashrc"
+    marker: "# {mark} ANSIBLE MANAGED NVM"
+    create: yes
+    block: |
+      export NVM_DIR="$HOME/.nvm"
+      [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+      [ -s "$NVM_DIR/bash_completion" ] && . "$NVM_DIR/bash_completion"
+    owner: "{{ ansible_user_id }}"
+    group: "{{ ansible_user_id }}"
+    mode: "0644"
+  become: false
+
+
+- name: insltall lts version of node
+  shell: |
+    export NVM_DIR="$HOME/.nvm"
+    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+    nvm install --lts
+    nvm use --lts
+  args:
+    executable: /bin/bash
+  when: nvm_check.rc is defined and nvm_check.rc != 0
