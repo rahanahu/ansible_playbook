@@ -81,17 +81,76 @@
   tags:
     - user
 
-- name: Clone fzf repository at the pinned version
+- name: Look up the latest fzf release
+  ansible.builtin.uri:
+    url: https://api.github.com/repos/junegunn/fzf/releases/latest
+    return_content: true
+  register: fzf_release_lookup
+  changed_when: false
+  check_mode: false
+  failed_when: false
+  when: fzf_version is not defined
+  tags:
+    - user
+
+- name: Check for an existing fzf checkout
+  ansible.builtin.stat:
+    path: "{{ zsh_target_home }}/.local/share/fzf"
+  become: "{{ ansible_facts['user_id'] != zsh_target_user }}"
+  become_user: "{{ zsh_target_user }}"
+  register: fzf_checkout_stat
+  tags:
+    - user
+
+- name: Resolve the effective fzf version
+  ansible.builtin.set_fact:
+    fzf_version_effective: >-
+      {{ fzf_version
+         | default(fzf_release_lookup.json.tag_name
+                    if ((fzf_release_lookup.status | default(0)) == 200 and
+                        not (fzf_release_lookup.json.prerelease | default(true)))
+                    else '') }}
+  changed_when: false
+  tags:
+    - user
+
+- name: Fail when the fzf release cannot be resolved and fzf is not installed
+  ansible.builtin.assert:
+    that:
+      - fzf_version_effective | length > 0 or fzf_checkout_stat.stat.exists
+    fail_msg: >-
+      Could not resolve the latest fzf release from the GitHub API, and no
+      existing fzf checkout was found at
+      {{ zsh_target_home }}/.local/share/fzf. Restore network access to the
+      GitHub API or pin fzf_version explicitly to continue.
+  tags:
+    - user
+
+- name: Warn that the installed fzf version is being kept
+  ansible.builtin.debug:
+    msg: >-
+      Could not resolve the latest fzf release from the GitHub API. Keeping
+      the currently installed fzf checkout at
+      {{ zsh_target_home }}/.local/share/fzf unchanged. Set fzf_version
+      explicitly to pin a version and avoid this lookup.
+  when:
+    - fzf_version_effective | length == 0
+    - fzf_checkout_stat.stat.exists
+  tags:
+    - user
+
+- name: Check out the selected fzf release
   ansible.builtin.git:
     repo: https://github.com/junegunn/fzf.git
     dest: "{{ zsh_target_home }}/.local/share/fzf"
-    version: "{{ fzf_version }}"
+    version: "{{ fzf_version_effective }}"
     depth: 1
     update: true
   become: "{{ ansible_facts['user_id'] != zsh_target_user }}"
   become_user: "{{ zsh_target_user }}"
   environment:
     HOME: "{{ zsh_target_home }}"
+  when: fzf_version_effective | length > 0
   register: fzf_clone
   tags:
     - user
@@ -249,8 +308,65 @@
     HOME: "{{ zsh_target_home }}"
   register: sheldon_version_check
   changed_when: false
+  check_mode: false
   failed_when: false
   when: ansible_facts['system'] == 'Linux'
+  tags:
+    - user
+
+- name: Look up the latest Sheldon release
+  ansible.builtin.uri:
+    url: https://api.github.com/repos/rossmacarthur/sheldon/releases/latest
+    return_content: true
+  register: sheldon_release_lookup
+  changed_when: false
+  check_mode: false
+  failed_when: false
+  when:
+    - ansible_facts['system'] == 'Linux'
+    - sheldon_version is not defined
+  tags:
+    - user
+
+- name: Resolve the effective Sheldon version
+  ansible.builtin.set_fact:
+    sheldon_version_effective: >-
+      {{ sheldon_version
+         | default(sheldon_release_lookup.json.tag_name
+                    if ((sheldon_release_lookup.status | default(0)) == 200 and
+                        not (sheldon_release_lookup.json.prerelease | default(true)))
+                    else '') }}
+  changed_when: false
+  when: ansible_facts['system'] == 'Linux'
+  tags:
+    - user
+
+- name: Fail when the Sheldon release cannot be resolved and Sheldon is not installed
+  ansible.builtin.assert:
+    that:
+      - >-
+        sheldon_version_effective | length > 0 or
+        (sheldon_version_check.rc | default(1)) == 0
+    fail_msg: >-
+      Could not resolve the latest Sheldon release from the GitHub API, and
+      no working Sheldon installation was found at
+      {{ zsh_target_home }}/.local/bin/sheldon. Restore network access to the
+      GitHub API or pin sheldon_version explicitly to continue.
+  when: ansible_facts['system'] == 'Linux'
+  tags:
+    - user
+
+- name: Warn that the installed Sheldon version is being kept
+  ansible.builtin.debug:
+    msg: >-
+      Could not resolve the latest Sheldon release from the GitHub API.
+      Keeping the currently installed Sheldon version at
+      {{ zsh_target_home }}/.local/bin/sheldon unchanged. Set
+      sheldon_version explicitly to pin a version and avoid this lookup.
+  when:
+    - ansible_facts['system'] == 'Linux'
+    - sheldon_version_effective | length == 0
+    - (sheldon_version_check.rc | default(1)) == 0
   tags:
     - user
 
@@ -266,7 +382,8 @@
   become_user: "{{ zsh_target_user }}"
   when:
     - ansible_facts['system'] == 'Linux'
-    - sheldon_version not in (sheldon_version_check.stdout | default(''))
+    - sheldon_version_effective | length > 0
+    - sheldon_version_effective not in (sheldon_version_check.stdout | default(''))
   tags:
     - user
 
@@ -277,7 +394,7 @@
       - --repo
       - rossmacarthur/sheldon
       - --tag
-      - "{{ sheldon_version }}"
+      - "{{ sheldon_version_effective }}"
       - --to
       - "{{ zsh_target_home }}/.local/bin"
       - --force
@@ -287,7 +404,8 @@
     HOME: "{{ zsh_target_home }}"
   when:
     - ansible_facts['system'] == 'Linux'
-    - sheldon_version not in (sheldon_version_check.stdout | default(''))
+    - sheldon_version_effective | length > 0
+    - sheldon_version_effective not in (sheldon_version_check.stdout | default(''))
   tags:
     - user
 

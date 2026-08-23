@@ -1,10 +1,38 @@
 ---
-- name: Install k3s (single node)
-  ansible.builtin.shell: curl -sfL https://get.k3s.io | sh -
-  args:
-    creates: /usr/local/bin/k3s
-  become: true
+- name: Check installed k3s version
+  ansible.builtin.command: k3s --version
+  register: k3s_installed_version
+  changed_when: false
+  failed_when: false
+  check_mode: false
   when: ansible_facts['system'] != 'Darwin'
+
+- name: Determine the download path for the pinned k3s installer
+  ansible.builtin.set_fact:
+    k3s_installer_path: "/tmp/k3s-install-{{ k3s_version | regex_replace('[^A-Za-z0-9._-]', '-') }}.sh"
+  when: ansible_facts['system'] != 'Darwin'
+
+- name: Install the pinned k3s release (single node)
+  when:
+    - ansible_facts['system'] != 'Darwin'
+    - k3s_version not in (k3s_installed_version.stdout | default(''))
+  block:
+    - name: Download k3s installer pinned to the target release tag
+      ansible.builtin.get_url:
+        url: "https://raw.githubusercontent.com/k3s-io/k3s/{{ k3s_version | urlencode }}/install.sh"
+        dest: "{{ k3s_installer_path }}"
+        mode: "0700"
+
+    - name: Run the pinned k3s installer
+      ansible.builtin.command: "{{ k3s_installer_path }}"
+      environment:
+        INSTALL_K3S_VERSION: "{{ k3s_version }}"
+      become: true
+
+    - name: Remove the downloaded k3s installer
+      ansible.builtin.file:
+        path: "{{ k3s_installer_path }}"
+        state: absent
 
 - name: Ensure .kube directory exists
   ansible.builtin.file:

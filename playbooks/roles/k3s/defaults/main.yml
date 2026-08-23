@@ -1,0 +1,5 @@
+---
+# k3s is pinned for compatibility with the rest of the Kubernetes tooling.
+# The installer is fetched from the matching tag rather than from the moving
+# get.k3s.io endpoint, so the script and the version it installs agree.
+k3s_version: v1.36.3+k3s1

@@ -65,28 +65,19 @@
   tags:
     - user
 
-- name: Check for an existing Hazkey checkout
-  ansible.builtin.stat:
-    path: "{{ hazkey_source_directory }}/.git"
-  become: "{{ ansible_facts['user_id'] != target_user }}"
-  become_user: "{{ target_user }}"
-  register: hazkey_checkout_stat
-  tags:
-    - user
-
 - name: Check out Hazkey with submodules
   ansible.builtin.git:
     repo: "{{ hazkey_repository }}"
     dest: "{{ hazkey_source_directory }}"
-    version: "{{ hazkey_version }}"
+    version: >-
+      {{ hazkey_development_branch if hazkey_update_repository | bool
+         else hazkey_version }}
     recursive: true
-    update: "{{ hazkey_update_repository | bool }}"
+    update: true
   become: "{{ ansible_facts['user_id'] != target_user }}"
   become_user: "{{ target_user }}"
   environment:
     HOME: "{{ target_home }}"
-  when:
-    - not hazkey_checkout_stat.stat.exists or hazkey_update_repository | bool
   tags:
     - user
 

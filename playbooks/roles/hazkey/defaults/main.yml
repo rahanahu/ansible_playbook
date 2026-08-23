@@ -1,14 +1,20 @@
 ---
 hazkey_repository: https://github.com/yosagi/hazkey.git
-hazkey_version: dev
+
+# Pinned to a commit verified on a Fedora VM: built, installed, and confirmed
+# working as an fcitx5 input method. Update this only after verifying a newer
+# commit the same way. Set hazkey_update_repository=true to fetch the moving
+# dev branch instead, which is how a candidate commit is obtained for testing.
+hazkey_version: 717e0144bce5e2f63d9c85fde23e72dcdcd5ed9d
+hazkey_development_branch: dev
 hazkey_required_fedora_release: "44"
 hazkey_allow_other_fedora_release: false
 hazkey_source_root: "{{ target_home }}/src"
 hazkey_source_directory: "{{ hazkey_source_root }}/hazkey"
 hazkey_commit_record_file: "{{ hazkey_source_root }}/hazkey-yosagi-dev.commit"
 
-# The first clone resolves the moving dev branch. Later runs keep that checkout
-# unless updating is explicitly requested.
+# When true, ignore hazkey_version and track the moving dev branch instead.
+# Intended for testing a candidate commit before pinning it in hazkey_version.
 hazkey_update_repository: false
 
 # CPU is the safe baseline. Enable Vulkan only after validating the CPU build.

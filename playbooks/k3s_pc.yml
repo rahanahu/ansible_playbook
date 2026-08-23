@@ -1,6 +1,13 @@
+---
 - hosts: localhost
   connection: local
   gather_facts: true
+  pre_tasks:
+    - name: Resolve the workstation target user
+      ansible.builtin.import_role:
+        name: target_user
+      tags:
+        - always
   roles:
     - role: zsh
     - role: docker

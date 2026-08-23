@@ -60,8 +60,8 @@ ansible-playbook playbooks/zsh.yml -i localhost, -c local -K
 ```
 
 This installs zsh, git, zoxide, direnv, optional desktop clipboard integration,
-pinned fzf and Sheldon, and the managed zsh configuration. The normal Linux
-user's login shell becomes zsh. For a headless machine, omit the desktop package:
+fzf and Sheldon, and the managed zsh configuration. The normal Linux user's
+login shell becomes zsh. For a headless machine, omit the desktop package:
 
 ```bash
 ansible-playbook playbooks/zsh.yml -i localhost, -c local -K \
@@ -316,9 +316,16 @@ Mozc have been validated, build the CPU version with:
 ansible-playbook playbooks/hazkey.yml -i localhost, -c local -K
 ```
 
-The first run clones `yosagi/hazkey:dev`; later runs do not advance the moving
-branch unless `hazkey_update_repository=true` is supplied. The checked-out SHA
-is recorded in `~/src/hazkey-yosagi-dev.commit`.
+The role checks out a pinned commit that was verified end to end on a Fedora
+VM, so every machine builds from the same source. Every run converges the
+checkout to that pin: an existing clone sitting on some other commit is
+corrected rather than silently left as is. Passing
+`hazkey_update_repository=true` ignores the pin and tracks the moving `dev`
+branch instead, which is how a candidate commit is obtained for testing. To
+move the pin forward, fetch `dev` with that flag, verify the result on a VM
+(build, install, and confirm real input), then set `hazkey_version` to the
+newly verified SHA. The checked-out SHA is still recorded in
+`~/src/hazkey-yosagi-dev.commit`.
 
 When starting the Hazkey playbook as root, specify the target user exactly as for
 the main workstation playbook:
@@ -400,15 +407,39 @@ makes the build fail.
 The Hazkey role does not fetch or cherry-pick upstream PR #25, resolve conflicts,
 or automate KDE/Fcitx5 UI and input validation.
 
+## Tool update policy
+
+Tools split into two groups. Development machines are kept current on
+tooling that is safe to move, while anything where a version change can
+break a cluster, a build, or an input method is pinned and moved
+deliberately. Release lookups need network access; when one is
+unavailable, the role keeps whatever is already installed and warns
+instead of failing.
+
+Follows the latest stable release:
+
+- `fzf` (`fzf_version` pins it)
+- Sheldon (`sheldon_version` pins it) — the installer script itself stays pinned by `sheldon_installer_commit` and verified by `sheldon_installer_checksum`; only the release tag it fetches moves, so integrity verification is unaffected
+- `uv`, via the upstream `astral.sh/uv/install.sh` installer
+- Node.js, via nvm at the latest LTS
+- Docker Engine, from Docker's own repository
+- Fedora packages, from the target release's repositories
+
+Pinned:
+
+- Hazkey (`hazkey_version`, `hazkey_update_repository`) — see the Hazkey section above
+- Helm (`helm_version`, `helm_archive_checksum`) — installed from the release archive, not a remote install script
+- k3s (`k3s_version`) — the installer is fetched from the matching release tag rather than the moving `get.k3s.io` endpoint
+
 ## Notes
 
 - macOS: the system `/bin/zsh` is used. Homebrew is installed automatically if missing for supporting tools; Docker Desktop is intentionally not installed by this repository.
 - k3s is Linux-only; no implicit kind/minikube replacement is installed on macOS.
 - Fedora and Debian-family systems use Docker Engine from Docker's official repositories.
-- `fzf` is installed from a pinned Git tag into `~/.local/share/fzf`; its binary is linked into `~/.local/bin`.
+- `fzf` is checked out from its latest stable release tag into `~/.local/share/fzf`, with the binary linked into `~/.local/bin`; `fzf_version` pins it.
 - `fzf_enable_completion` defaults to `true`. Disable it with `-e fzf_enable_completion=false`.
 - Ansible-managed zsh settings live in `~/.config/zsh/ansible.zsh`. The role adds a small loader block at the start of `~/.zshrc`, so settings below that block remain user-editable and can override managed defaults.
-- On Linux, `sheldon` is installed at the version pinned by `sheldon_version`. On macOS, Homebrew manages `sheldon`.
+- On Linux, `sheldon` follows the latest stable release; set `sheldon_version` to pin it. On macOS, Homebrew manages `sheldon`.
 - Normal-user execution is preferred. Direct-root workstation runs require an explicit non-root `target_user`; system-only runs do not.
 
 ## Contributing
