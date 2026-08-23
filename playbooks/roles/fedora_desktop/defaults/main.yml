@@ -1,0 +1,4 @@
+---
+fedora_install_desktop_essentials: true
+fedora_install_nas_tools: "{{ fedora44_install_nas_tools | default(false) }}"
+fedora_install_network_gui_tools: "{{ fedora44_install_network_gui_tools | default(false) }}"

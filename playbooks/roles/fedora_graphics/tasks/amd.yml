@@ -1,0 +1,62 @@
+---
+- name: Read driver information for AMD graphics devices
+  ansible.builtin.command:
+    argv:
+      - lspci
+      - -Dnnk
+      - -s
+      - "{{ fedora_amd_pci_line.split()[0] }}"
+  loop: "{{ fedora_graphics_amd_pci_lines }}"
+  loop_control:
+    label: "{{ fedora_amd_pci_line.split()[0] }}"
+    loop_var: fedora_amd_pci_line
+  register: fedora_graphics_amd_driver_info
+  changed_when: false
+  when:
+    - fedora_graphics_has_amd | bool
+    - fedora_graphics_strict_checks | bool
+
+- name: Require amdgpu for each detected AMD graphics device
+  ansible.builtin.assert:
+    that:
+      - "'Kernel driver in use: amdgpu' in fedora_amd_driver_result.stdout"
+    fail_msg: >-
+      AMD graphics device {{
+      fedora_amd_driver_result.fedora_amd_pci_line.split()[0] }} is not using
+      the amdgpu kernel driver.
+  loop: "{{ fedora_graphics_amd_driver_info.results | default([]) }}"
+  loop_control:
+    label: >-
+      {{ fedora_amd_driver_result.fedora_amd_pci_line.split()[0] }}
+    loop_var: fedora_amd_driver_result
+  when:
+    - fedora_graphics_has_amd | bool
+    - fedora_graphics_strict_checks | bool
+
+- name: Read Vulkan device summary for AMD validation
+  ansible.builtin.command:
+    argv:
+      - vulkaninfo
+      - --summary
+  register: fedora_graphics_vulkaninfo
+  changed_when: false
+  failed_when: false
+  when:
+    - fedora_graphics_has_amd | bool
+    - fedora_graphics_strict_checks | bool
+
+- name: Require an AMD RADV Vulkan device
+  ansible.builtin.assert:
+    that:
+      - fedora_graphics_vulkaninfo.rc == 0
+      - >-
+        (fedora_graphics_vulkaninfo.stdout |
+         regex_search('(?i)(AMD|Radeon)')) is not none
+      - "'radv' in (fedora_graphics_vulkaninfo.stdout | lower)"
+    fail_msg: >-
+      An AMD GPU was detected, but vulkaninfo did not expose an AMD RADV device.
+      Verify the Mesa Vulkan packages and the AMD device path. Other Vulkan
+      devices in a mixed-GPU system are not treated as the AMD device.
+  when:
+    - fedora_graphics_has_amd | bool
+    - fedora_graphics_strict_checks | bool

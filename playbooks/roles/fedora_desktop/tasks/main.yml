@@ -1,0 +1,116 @@
+---
+- name: Check whether full FFmpeg is installed
+  ansible.builtin.command:
+    argv:
+      - rpm
+      - -q
+      - ffmpeg
+  register: fedora_ffmpeg_package
+  changed_when: false
+  failed_when: false
+  when: fedora_install_desktop_essentials | bool
+  tags:
+    - system
+    - desktop
+
+- name: Replace ffmpeg-free with full FFmpeg
+  ansible.builtin.command:
+    argv:
+      - dnf
+      - swap
+      - -y
+      - ffmpeg-free
+      - ffmpeg
+      - --allowerasing
+  become: true
+  when:
+    - fedora_install_desktop_essentials | bool
+    - fedora_ffmpeg_package.rc != 0
+  tags:
+    - system
+    - desktop
+
+- name: Check whether freeworld VA-API drivers are installed
+  ansible.builtin.command:
+    argv:
+      - rpm
+      - -q
+      - mesa-va-drivers-freeworld
+  register: fedora_vaapi_freeworld_package
+  changed_when: false
+  failed_when: false
+  when: fedora_install_desktop_essentials | bool
+  tags:
+    - system
+    - desktop
+
+- name: Replace Fedora VA-API drivers with freeworld drivers
+  ansible.builtin.command:
+    argv:
+      - dnf
+      - swap
+      - -y
+      - mesa-va-drivers
+      - mesa-va-drivers-freeworld
+      - --allowerasing
+  become: true
+  when:
+    - fedora_install_desktop_essentials | bool
+    - fedora_vaapi_freeworld_package.rc != 0
+  tags:
+    - system
+    - desktop
+
+- name: Install Fedora desktop essentials
+  ansible.builtin.dnf:
+    name:
+      - gstreamer1-plugins-ugly
+      - gstreamer1-plugins-bad-freeworld
+      - libva-utils
+      - ffmpegthumbnailer
+      - 7zip
+      - unrar
+      - exfatprogs
+      - ntfs-3g
+      - kio-extras
+      - kio-admin
+      - langpacks-fonts-ja
+      - google-noto-color-emoji-fonts
+      - lm_sensors
+      - smartmontools
+      - nvme-cli
+      - pciutils
+      - usbutils
+      - ethtool
+    state: present
+  become: true
+  when: fedora_install_desktop_essentials | bool
+  tags:
+    - system
+    - desktop
+
+- name: Install optional NAS and file-sharing clients
+  ansible.builtin.dnf:
+    name:
+      - cifs-utils
+      - nfs-utils
+      - samba-client
+    state: present
+  become: true
+  when: fedora_install_nas_tools | bool
+  tags:
+    - system
+    - desktop
+
+- name: Install optional graphical network diagnostics
+  ansible.builtin.dnf:
+    name:
+      - wireshark
+      - wireshark-cli
+      - nmap
+    state: present
+  become: true
+  when: fedora_install_network_gui_tools | bool
+  tags:
+    - system
+    - desktop

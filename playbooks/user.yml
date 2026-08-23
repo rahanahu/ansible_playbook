@@ -125,7 +125,7 @@
 
     - name: Configure optional user gaming tools
       ansible.builtin.import_role:
-        name: fedora44_gaming
+        name: fedora_gaming
         tasks_from: user
       when:
         - target_profile_enable_desktop | bool
@@ -136,7 +136,7 @@
 
     - name: Configure the workstation user's Fcitx environment
       ansible.builtin.import_role:
-        name: fedora44_input
+        name: fedora_input
         tasks_from: user
       when:
         - target_profile_enable_desktop | bool

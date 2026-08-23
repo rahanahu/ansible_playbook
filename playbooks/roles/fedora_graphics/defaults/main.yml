@@ -1,0 +1,3 @@
+---
+fedora_graphics_strict_checks: true
+fedora_graphics_require_amd_session_renderer: "{{ fedora44_graphics_require_amd_session_renderer | default(false) }}"

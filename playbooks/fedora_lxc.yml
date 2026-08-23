@@ -1,0 +1,92 @@
+---
+- name: Configure a Fedora LXC guest
+  hosts: localhost
+  connection: local
+  gather_facts: true
+
+  vars:
+    target_user_fallback: root
+    target_user_allow_root: true
+
+  pre_tasks:
+    - name: Validate the Fedora release
+      ansible.builtin.import_role:
+        name: fedora_preflight
+        tasks_from: release
+      tags:
+        - always
+        - preflight
+
+    - name: Validate the Fedora LXC guest
+      ansible.builtin.import_role:
+        name: fedora_lxc_preflight
+      tags:
+        - always
+        - preflight
+
+    - name: Resolve and validate the LXC target user
+      ansible.builtin.import_role:
+        name: target_user
+      tags:
+        - always
+        - user
+
+    - name: Resolve the LXC firewalld feature switch
+      ansible.builtin.set_fact:
+        fedora_lxc_install_firewalld_effective: >-
+          {{
+            fedora_lxc_install_firewalld
+            | default(fedora44_lxc_install_firewalld | default(false))
+            | bool
+          }}
+      changed_when: false
+      tags:
+        - always
+
+  tasks:
+    - name: Install Fedora CLI and diagnostic tools for LXC
+      ansible.builtin.import_role:
+        name: fedora_cli_tools
+      vars:
+        fedora_install_hardware_cli_tools: false
+      tags:
+        - system
+        - cli
+
+    - name: Install headless zsh system dependencies
+      ansible.builtin.import_role:
+        name: zsh
+        tasks_from: system
+      vars:
+        zsh_install_direnv_package: >-
+          {{ user_server_enable_direnv | default(false) | bool }}
+        zsh_install_desktop_packages: false
+      tags:
+        - system
+        - zsh
+
+    - name: Install firewalld when explicitly requested for LXC
+      ansible.builtin.dnf:
+        name: firewalld
+        state: present
+      become: true
+      when: fedora_lxc_install_firewalld_effective | bool
+      tags:
+        - system
+        - firewall
+
+    - name: Enable firewalld when explicitly requested for LXC
+      ansible.builtin.service:
+        name: firewalld
+        enabled: true
+        state: started
+      become: true
+      when: fedora_lxc_install_firewalld_effective | bool
+      tags:
+        - system
+        - firewall
+
+- ansible.builtin.import_playbook: user.yml
+  vars:
+    target_user_fallback: root
+    user_profile_default: server

@@ -8,9 +8,9 @@ workstations and Fedora LXC guests.
 | Goal | Playbook |
 |---|---|
 | Install only the managed zsh environment | `playbooks/zsh.yml` |
-| Build a complete Fedora 44 desktop | `playbooks/fedora44_workstation.yml` |
-| Configure a Fedora 44 LXC guest | `playbooks/fedora44_lxc.yml` |
-| Repair workstation system components only | `playbooks/fedora44_system.yml` |
+| Build a complete Fedora desktop | `playbooks/fedora_workstation.yml` |
+| Configure a Fedora LXC guest | `playbooks/fedora_lxc.yml` |
+| Repair workstation system components only | `playbooks/fedora_system.yml` |
 | Configure one user's home environment | `playbooks/user.yml` |
 | Build the complete developer environment | `playbooks/dev_pc.yml` |
 | Build Hazkey after validating Fcitx5/Mozc | `playbooks/hazkey.yml` |
@@ -18,7 +18,7 @@ workstations and Fedora LXC guests.
 For an ordinary Fedora desktop, use this one command as the normal login user:
 
 ```bash
-ansible-playbook playbooks/fedora44_workstation.yml -i localhost, -c local -K
+ansible-playbook playbooks/fedora_workstation.yml -i localhost, -c local -K
 ```
 
 ## Supported targets
@@ -100,7 +100,7 @@ For the initial complete setup, run without tags or use `--tags zsh`. The
 `system` and `user` tags are available for later repair runs; `--tags user` does
 not install missing system packages.
 
-## Fedora 44 KDE workstation
+## Fedora KDE workstation
 
 Fedora 44 is the currently validated release and the minimum supported release.
 Newer Fedora releases continue with an explicit unvalidated-release warning;
@@ -116,7 +116,41 @@ required because a plain `key=[45]` argument is parsed as a string, not a
 list. The variable can equally be set in inventory or `group_vars`, which is
 often the more natural place for a policy list.
 
-The Fedora workstation wrapper combines machine-wide `system` tasks,
+### Migrating from the fedora44_* names
+
+The canonical Fedora entrypoints are `playbooks/fedora_workstation.yml`,
+`playbooks/fedora_system.yml`, and `playbooks/fedora_lxc.yml`.
+`playbooks/fedora44_workstation.yml`, `fedora44_system.yml`, and
+`fedora44_lxc.yml` remain temporarily as thin compatibility wrappers that
+simply import the canonical playbook, so existing commands and any `-e`
+flags keep working unchanged.
+
+The published `fedora44_*` feature switches used below are also still
+accepted. When both an old and a new name are supplied, the new `fedora_*`
+name wins. The release-policy variables `fedora44_required_release` and
+`fedora44_allow_other_release` are likewise still accepted.
+
+| Old variable | New variable |
+|---|---|
+| `fedora44_install_cli_tools` | `fedora_install_cli_tools` |
+| `fedora44_install_heavy_debug_tools` | `fedora_install_heavy_debug_tools` |
+| `fedora44_install_nas_tools` | `fedora_install_nas_tools` |
+| `fedora44_install_network_gui_tools` | `fedora_install_network_gui_tools` |
+| `fedora44_install_gaming_extras` | `fedora_install_gaming_extras` |
+| `fedora44_install_protonplus` | `fedora_install_protonplus` |
+| `fedora44_graphics_require_amd_session_renderer` | `fedora_graphics_require_amd_session_renderer` |
+| `fedora44_configure_root_zsh` | `fedora_configure_root_zsh` |
+| `fedora44_lxc_install_firewalld` | `fedora_lxc_install_firewalld` |
+| `fedora44_snapper_create_root_config` | `fedora_snapper_create_root_config` |
+| `fedora44_snapper_create_baseline_snapshot` | `fedora_snapper_create_baseline_snapshot` |
+
+New configurations should use the `fedora_*` entrypoints and `fedora_*`
+variables directly; the compatibility layer above is temporary and intended
+for one migration cycle. The underlying roles were also renamed from
+`fedora44_*` to `fedora_*`, which matters only if something outside this
+repository referenced them by role name directly.
+
+The Fedora workstation entrypoint combines machine-wide `system` tasks,
 per-account `user` tasks, root zsh, and conditional graphical `session` checks. It installs the
 common Mesa baseline, detected AMD support, RPM Fusion, desktop essentials, CLI diagnostics,
 development tools, Steam/MangoHud, and Fcitx5/Mozc.
@@ -125,7 +159,7 @@ Running as the normal login user is recommended. The target defaults to that
 account and its home directory is resolved from the account database:
 
 ```bash
-ansible-playbook playbooks/fedora44_workstation.yml -i localhost, -c local -K
+ansible-playbook playbooks/fedora_workstation.yml -i localhost, -c local -K
 ```
 
 When Ansible runs as root through sudo, a valid non-root `SUDO_USER` is used
@@ -134,7 +168,7 @@ must be explicit. Its home is resolved from `getent`; `/home/<user>` is never
 assumed:
 
 ```bash
-ansible-playbook playbooks/fedora44_workstation.yml \
+ansible-playbook playbooks/fedora_workstation.yml \
   -i localhost, -c local \
   -e target_user=yusuke
 ```
@@ -154,15 +188,15 @@ sudo -i      -> root login bash
 sudo -H zsh  -> root Ansible-managed zsh
 ```
 
-Use `-e fedora44_configure_root_zsh=false` to skip root's zsh environment.
+Use `-e fedora_configure_root_zsh=false` to skip root's zsh environment.
 
 Scope and feature tags can limit recovery runs:
 
 ```bash
-ansible-playbook playbooks/fedora44_workstation.yml \
+ansible-playbook playbooks/fedora_workstation.yml \
   -i localhost, -c local -K --tags system
 
-ansible-playbook playbooks/fedora44_workstation.yml \
+ansible-playbook playbooks/fedora_workstation.yml \
   -i localhost, -c local -K --tags user
 ```
 
@@ -171,7 +205,7 @@ target user is needed. This remains a workstation baseline and intentionally
 rejects LXC containers:
 
 ```bash
-ansible-playbook playbooks/fedora44_system.yml -i localhost, -c local
+ansible-playbook playbooks/fedora_system.yml -i localhost, -c local
 ```
 
 To configure only one account, use `user.yml`. It defaults to the invoking
@@ -203,15 +237,15 @@ ansible-playbook playbooks/user.yml -i localhost, -c local \
 Server direnv integration remains off unless
 `-e user_server_enable_direnv=true` is supplied.
 
-### Fedora 44 LXC
+### Fedora LXC
 
-The LXC entrypoint is a separate headless baseline. It validates Fedora 44, an
-LXC guest, and a usable systemd environment, then installs CLI tools, headless
-zsh dependencies, and the target user's `server` profile. A direct root login
-needs only:
+The LXC entrypoint is a separate headless baseline. It validates the Fedora
+release, an LXC guest, and a usable systemd environment, then installs CLI
+tools, headless zsh dependencies, and the target user's `server` profile. A
+direct root login needs only:
 
 ```bash
-ansible-playbook playbooks/fedora44_lxc.yml -i localhost, -c local
+ansible-playbook playbooks/fedora_lxc.yml -i localhost, -c local
 ```
 
 That command targets `/root`, installs zsh/fzf/zoxide/Sheldon/uv/nvm, and keeps
@@ -219,7 +253,7 @@ root's login shell as bash. To configure an existing ordinary account while
 running Ansible as root, specify it explicitly; its home is read from passwd:
 
 ```bash
-ansible-playbook playbooks/fedora44_lxc.yml \
+ansible-playbook playbooks/fedora_lxc.yml \
   -i localhost, -c local \
   -e target_user=yusuke
 ```
@@ -227,7 +261,7 @@ ansible-playbook playbooks/fedora44_lxc.yml \
 The LXC baseline does not manage Docker, graphics/GPU devices, KDE, Wayland,
 desktop multimedia, gaming, Fcitx, Hazkey, or Snapper. It does not require
 SELinux Enforcing or active firewalld. Guest firewalld is opt-in with
-`-e fedora44_lxc_install_firewalld=true`; Proxmox host networking and firewall
+`-e fedora_lxc_install_firewalld=true`; Proxmox host networking and firewall
 policy remain outside this repository.
 
 Running the workstation entrypoint in LXC, or the LXC entrypoint on bare metal
@@ -243,32 +277,32 @@ an error, and no package or existing driver is removed based on GPU vendor.
 
 NVIDIA- and Intel-specific driver management is not implemented. On a mixed-GPU
 system, the active graphical session is not required to render on AMD by
-default. Set `fedora44_graphics_require_amd_session_renderer=true` only when the
+default. Set `fedora_graphics_require_amd_session_renderer=true` only when the
 session is intentionally expected to use the AMD adapter.
 
 Desktop essentials include full FFmpeg, RPM Fusion GStreamer/VA-API components,
 archive/filesystem support, KDE integration, Japanese/emoji fonts, and hardware
 diagnostics. CLI/diagnostic tools are enabled by default, including packet/DNS,
 route, throughput, TCP/UDP, syscall, debugger, sensor, SMART, and NVMe tools.
-Disable them with `fedora44_install_cli_tools=false` or disable only the heavier
-debuggers with `fedora44_install_heavy_debug_tools=false`.
+Disable them with `fedora_install_cli_tools=false` or disable only the heavier
+debuggers with `fedora_install_heavy_debug_tools=false`.
 
 Snapper packages are installed by the system baseline. Creating its root
 configuration and a baseline snapshot remains explicit because it can affect the
 Btrfs subvolume layout:
 
 ```bash
-ansible-playbook playbooks/fedora44_workstation.yml \
+ansible-playbook playbooks/fedora_workstation.yml \
   -i localhost, -c local -K \
-  -e fedora44_snapper_create_root_config=true \
-  -e fedora44_snapper_create_baseline_snapshot=true
+  -e fedora_snapper_create_root_config=true \
+  -e fedora_snapper_create_baseline_snapshot=true
 ```
 
 GameMode, gamescope, and protontricks are also opt-in with
-`fedora44_install_gaming_extras=true`. ProtonPlus uses
-`fedora44_install_protonplus=true`; its Flatpak data belongs to the workstation
-user rather than root. Optional NAS clients use `fedora44_install_nas_tools=true`
-and Wireshark/nmap use `fedora44_install_network_gui_tools=true`.
+`fedora_install_gaming_extras=true`. ProtonPlus uses
+`fedora_install_protonplus=true`; its Flatpak data belongs to the workstation
+user rather than root. Optional NAS clients use `fedora_install_nas_tools=true`
+and Wireshark/nmap use `fedora_install_network_gui_tools=true`.
 
 The playbook does not change UEFI settings, upgrade or reboot the operating
 system, select KDE virtual-keyboard settings, run games, or apply GPU tuning.

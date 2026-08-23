@@ -1,0 +1,38 @@
+---
+fedora_install_cli_tools: "{{ fedora44_install_cli_tools | default(true) }}"
+fedora_install_heavy_debug_tools: "{{ fedora44_install_heavy_debug_tools | default(true) }}"
+fedora_install_hardware_cli_tools: true
+
+fedora_cli_core_packages:
+  - bat
+  - btop
+  - entr
+  - fd-find
+  - hyperfine
+  - jq
+  - lsof
+  - ripgrep
+  - sysstat
+  - tealdeer
+  - tmux
+
+fedora_cli_network_packages:
+  - bind-utils
+  - ethtool
+  - iperf3
+  - mtr
+  - nmap-ncat
+  - tcpdump
+
+fedora_cli_hardware_packages:
+  - lm_sensors
+  - nvme-cli
+  - pciutils
+  - smartmontools
+  - usbutils
+
+fedora_cli_debug_packages:
+  - gdb
+  - perf
+  - strace
+  - valgrind

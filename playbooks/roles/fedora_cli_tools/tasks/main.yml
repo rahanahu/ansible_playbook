@@ -1,0 +1,34 @@
+---
+- name: Install general CLI and diagnostic tools
+  ansible.builtin.dnf:
+    name: "{{ fedora_cli_core_packages + fedora_cli_network_packages }}"
+    state: present
+  become: true
+  when: fedora_install_cli_tools | bool
+  tags:
+    - system
+    - cli
+
+- name: Install hardware diagnostic tools
+  ansible.builtin.dnf:
+    name: "{{ fedora_cli_hardware_packages }}"
+    state: present
+  become: true
+  when:
+    - fedora_install_cli_tools | bool
+    - fedora_install_hardware_cli_tools | bool
+  tags:
+    - system
+    - cli
+
+- name: Install heavy debugging tools
+  ansible.builtin.dnf:
+    name: "{{ fedora_cli_debug_packages }}"
+    state: present
+  become: true
+  when:
+    - fedora_install_cli_tools | bool
+    - fedora_install_heavy_debug_tools | bool
+  tags:
+    - system
+    - cli

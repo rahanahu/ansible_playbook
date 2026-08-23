@@ -1,0 +1,61 @@
+---
+- ansible.builtin.import_playbook: fedora_system.yml
+
+- ansible.builtin.import_playbook: user.yml
+  vars:
+    user_require_non_root_target: true
+    user_profile_default: workstation
+
+- name: Configure workstation session checks and root zsh
+  hosts: localhost
+  connection: local
+  gather_facts: true
+
+  pre_tasks:
+    - name: Resolve the root zsh feature switch
+      ansible.builtin.set_fact:
+        fedora_configure_root_zsh_effective: >-
+          {{
+            fedora_configure_root_zsh
+            | default(fedora44_configure_root_zsh | default(true))
+            | bool
+          }}
+      changed_when: false
+      tags:
+        - always
+
+  tasks:
+    - name: Validate the available desktop session
+      ansible.builtin.import_role:
+        name: fedora_preflight
+        tasks_from: session
+      tags:
+        - session
+        - preflight
+
+    - name: Validate graphics in the available desktop session
+      ansible.builtin.import_role:
+        name: fedora_graphics
+        tasks_from: session
+      tags:
+        - session
+        - graphics
+
+    - name: Configure root zsh without changing its login shell
+      ansible.builtin.include_role:
+        name: zsh
+        apply:
+          tags:
+            - user
+            - zsh
+      vars:
+        zsh_target_user: root
+        zsh_target_home: /root
+        zsh_manage_login_shell: false
+        zsh_enable_direnv: false
+        zsh_install_system_packages: false
+      when: fedora_configure_root_zsh_effective | bool
+      tags:
+        - user
+        - development
+        - zsh

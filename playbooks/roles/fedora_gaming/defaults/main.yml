@@ -1,0 +1,3 @@
+---
+fedora_install_gaming_extras: "{{ fedora44_install_gaming_extras | default(false) }}"
+fedora_install_protonplus: "{{ fedora44_install_protonplus | default(false) }}"
