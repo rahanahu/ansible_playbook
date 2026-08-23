@@ -41,22 +41,27 @@
 
 ## 実装TODO
 
-- [ ] `fzf_version` の固定defaultを廃止し、latest stable tagを安全に解決する仕組みに変更する。
-- [ ] fzfは現在versionとlatest stableを比較し、必要なときだけ更新する。
-- [ ] `sheldon_version` の固定defaultを廃止し、latest stable releaseを安全に解決する仕組みに変更する。
-- [ ] Sheldonは現在versionとlatest stableを比較し、必要なときだけ更新する。
-- [ ] uvが意図的にlatest stable追従であることをREADMEまたはroleコメントへ明記する。
-- [ ] Node.jsは最新LTS追従を維持し、その方針を明記する。
-- [ ] Hazkeyの現在のVM検証済みcommit SHAを確認し、`hazkey_version` をそのSHAへpinする。
-- [ ] Hazkey更新手順を「新commitをVMで検証 → pin更新」に統一する。
-- [ ] k3sのversion変数を追加し、install時に明示versionを使用する。
-- [ ] Helmのversion変数を追加し、release artifactまたはversion指定可能な安全なinstall方式へ変更する。
-- [ ] latest追従とpinの方針をREADMEへ短くまとめる。
+- [x] `fzf_version` の固定defaultを廃止し、latest stable tagを安全に解決する仕組みに変更する。
+- [x] fzfは現在versionとlatest stableを比較し、必要なときだけ更新する。
+- [x] `sheldon_version` の固定defaultを廃止し、latest stable releaseを安全に解決する仕組みに変更する。
+- [x] Sheldonは現在versionとlatest stableを比較し、必要なときだけ更新する。
+- [x] uvが意図的にlatest stable追従であることをREADMEまたはroleコメントへ明記する。
+- [x] Node.jsは最新LTS追従を維持し、その方針を明記する。
+- [x] Hazkeyの現在のVM検証済みcommit SHAを確認し、`hazkey_version` をそのSHAへpinする。
+- [x] Hazkey更新手順を「新commitをVMで検証 → pin更新」に統一する。
+- [x] k3sのversion変数を追加し、install時に明示versionを使用する。
+- [x] Helmのversion変数を追加し、release artifactまたはversion指定可能な安全なinstall方式へ変更する。
+- [x] latest追従とpinの方針をREADMEへ短くまとめる。
 
 ## Acceptance
 
-- [ ] latest追従対象はdevelopment HEADではなくstable releaseのみを使う。
-- [ ] latest追従対象は2回目のAnsible実行で不要な `changed` を出さない。
-- [ ] Hazkeyは同じpinで2回目 `changed=0` になる。
-- [ ] Hazkeyのpinを変更したときだけbuild/installが再実行される。
-- [ ] k3s/Helmは同じversion指定で再実行してもidempotentである。
+k3sはsystemd serviceを起動するため、検証機ではあえてinstallしていない。
+`--syntax-check` とcheck-modeの挙動のみ確認済みで、実installでの
+idempotency確認は未実施。
+
+- [x] latest追従対象はdevelopment HEADではなくstable releaseのみを使う。
+- [x] latest追従対象は2回目のAnsible実行で不要な `changed` を出さない。
+- [x] Hazkeyは同じpinで2回目 `changed=0` になる。
+- [x] Hazkeyのpinを変更したときだけbuild/installが再実行される。
+- [x] Helmは同じversion指定で再実行してもidempotentである（v3.21.4 → v4.2.4へ実際にupgradeし、2回目 `changed=0` を確認）。
+- [ ] k3sは同じversion指定で再実行してもidempotentである（manual validation required: systemd serviceを起動するため検証機では未install）。

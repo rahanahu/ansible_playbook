@@ -428,13 +428,15 @@ Follows the latest stable release:
 Pinned:
 
 - Hazkey (`hazkey_version`, `hazkey_update_repository`) — see the Hazkey section above
-- Helm (`helm_version`, `helm_archive_checksum`) — installed from the release archive, not a remote install script
+- Helm (`helm_version`, `helm_archive_checksums`) — installed from the release archive, not a remote install script
 - k3s (`k3s_version`) — the installer is fetched from the matching release tag rather than the moving `get.k3s.io` endpoint
 
 ## Notes
 
 - macOS: the system `/bin/zsh` is used. Homebrew is installed automatically if missing for supporting tools; Docker Desktop is intentionally not installed by this repository.
 - k3s is Linux-only; no implicit kind/minikube replacement is installed on macOS.
+- k3s writes the kubeconfig to `{{ target_home }}/.kube/config`, owned by `target_user`, not the invoking user.
+- Helm installs the Linux `amd64`/`arm64` release archive, resolved from the host architecture; other architectures fail explicitly.
 - Fedora and Debian-family systems use Docker Engine from Docker's official repositories.
 - `fzf` is checked out from its latest stable release tag into `~/.local/share/fzf`, with the binary linked into `~/.local/bin`; `fzf_version` pins it.
 - `fzf_enable_completion` defaults to `true`. Disable it with `-e fzf_enable_completion=false`.

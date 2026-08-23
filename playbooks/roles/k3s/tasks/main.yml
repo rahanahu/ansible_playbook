@@ -1,4 +1,15 @@
 ---
+- name: Require the k3s target user
+  ansible.builtin.assert:
+    that:
+      - target_user is defined
+      - target_home is defined
+    fail_msg: >-
+      Resolve target_user and target_home before the k3s role (import the
+      target_user role first, as playbooks/k3s_pc.yml and
+      playbooks/dev_pc.yml do).
+  when: ansible_facts['system'] != 'Darwin'
+
 - name: Check installed k3s version
   ansible.builtin.command: k3s --version
   register: k3s_installed_version
@@ -9,7 +20,8 @@
 
 - name: Determine the download path for the pinned k3s installer
   ansible.builtin.set_fact:
-    k3s_installer_path: "/tmp/k3s-install-{{ k3s_version | regex_replace('[^A-Za-z0-9._-]', '-') }}.sh"
+    k3s_installer_dir: "{{ target_home }}/.cache/ansible/k3s"
+    k3s_installer_path: "{{ target_home }}/.cache/ansible/k3s/install.sh"
   when: ansible_facts['system'] != 'Darwin'
 
 - name: Install the pinned k3s release (single node)
@@ -17,11 +29,21 @@
     - ansible_facts['system'] != 'Darwin'
     - k3s_version not in (k3s_installed_version.stdout | default(''))
   block:
+    - name: Create the k3s installer download directory
+      ansible.builtin.file:
+        path: "{{ k3s_installer_dir }}"
+        state: directory
+        owner: "{{ target_user }}"
+        mode: "0700"
+      check_mode: false
+
     - name: Download k3s installer pinned to the target release tag
       ansible.builtin.get_url:
         url: "https://raw.githubusercontent.com/k3s-io/k3s/{{ k3s_version | urlencode }}/install.sh"
         dest: "{{ k3s_installer_path }}"
+        owner: "{{ target_user }}"
         mode: "0700"
+      check_mode: false
 
     - name: Run the pinned k3s installer
       ansible.builtin.command: "{{ k3s_installer_path }}"
@@ -33,21 +55,22 @@
       ansible.builtin.file:
         path: "{{ k3s_installer_path }}"
         state: absent
+      check_mode: false
 
 - name: Ensure .kube directory exists
   ansible.builtin.file:
-    path: "{{ ansible_facts['user_dir'] }}/.kube"
+    path: "{{ target_home }}/.kube"
     state: directory
-    owner: "{{ ansible_facts['user_id'] }}"
+    owner: "{{ target_user }}"
     mode: "0700"
   when: ansible_facts['system'] != 'Darwin'
 
 - name: Copy kubeconfig to user home
   ansible.builtin.copy:
     src: /etc/rancher/k3s/k3s.yaml
-    dest: "{{ ansible_facts['user_dir'] }}/.kube/config"
+    dest: "{{ target_home }}/.kube/config"
     remote_src: true
-    owner: "{{ ansible_facts['user_id'] }}"
+    owner: "{{ target_user }}"
     mode: "0600"
   become: true
   when: ansible_facts['system'] != 'Darwin'
