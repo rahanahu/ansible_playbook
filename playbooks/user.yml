@@ -129,7 +129,7 @@
         tasks_from: user
       when:
         - target_profile_enable_desktop | bool
-        - ansible_distribution == 'Fedora'
+        - ansible_facts['distribution'] == 'Fedora'
       tags:
         - user
         - gaming
@@ -140,7 +140,7 @@
         tasks_from: user
       when:
         - target_profile_enable_desktop | bool
-        - ansible_distribution == 'Fedora'
+        - ansible_facts['distribution'] == 'Fedora'
       tags:
         - user
         - input

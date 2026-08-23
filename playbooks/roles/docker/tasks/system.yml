@@ -1,6 +1,6 @@
 ---
 - name: Install Docker Engine on Debian-family systems
-  when: ansible_os_family == 'Debian'
+  when: ansible_facts['os_family'] == 'Debian'
   block:
     - name: Remove conflicting Docker packages
       ansible.builtin.apt:
@@ -36,7 +36,7 @@
       ansible.builtin.get_url:
         url: >-
           https://download.docker.com/linux/{{
-          'ubuntu' if ansible_distribution == 'Ubuntu' else 'debian' }}/gpg
+          'ubuntu' if ansible_facts['distribution'] == 'Ubuntu' else 'debian' }}/gpg
         dest: /etc/apt/keyrings/docker.asc
         mode: "0644"
         force: true
@@ -45,11 +45,11 @@
     - name: Add Docker apt repository
       ansible.builtin.apt_repository:
         repo: >-
-          deb [arch={{ 'arm64' if ansible_architecture in ['aarch64', 'arm64']
+          deb [arch={{ 'arm64' if ansible_facts['architecture'] in ['aarch64', 'arm64']
           else 'amd64' }} signed-by=/etc/apt/keyrings/docker.asc]
           https://download.docker.com/linux/{{
-          'ubuntu' if ansible_distribution == 'Ubuntu' else 'debian' }}
-          {{ ansible_distribution_release }} stable
+          'ubuntu' if ansible_facts['distribution'] == 'Ubuntu' else 'debian' }}
+          {{ ansible_facts['distribution_release'] }} stable
         filename: docker
         state: present
       become: true
@@ -67,7 +67,7 @@
       become: true
 
 - name: Install Docker Engine on Fedora
-  when: ansible_distribution == 'Fedora'
+  when: ansible_facts['distribution'] == 'Fedora'
   block:
     - name: Install Docker repository prerequisites
       ansible.builtin.dnf:
@@ -100,7 +100,9 @@
     name: docker
     state: present
   become: true
-  when: ansible_os_family == 'Debian' or ansible_distribution == 'Fedora'
+  when: >-
+    ansible_facts['os_family'] == 'Debian' or
+    ansible_facts['distribution'] == 'Fedora'
 
 - name: Ensure docker service is enabled and running
   ansible.builtin.service:
@@ -108,4 +110,6 @@
     enabled: true
     state: started
   become: true
-  when: ansible_os_family == 'Debian' or ansible_distribution == 'Fedora'
+  when: >-
+    ansible_facts['os_family'] == 'Debian' or
+    ansible_facts['distribution'] == 'Fedora'

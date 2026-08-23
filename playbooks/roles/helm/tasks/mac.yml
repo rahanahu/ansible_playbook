@@ -1,7 +1,7 @@
 ---
 - name: Determine Homebrew prefix
   ansible.builtin.set_fact:
-    homebrew_prefix: "{{ '/opt/homebrew' if ansible_architecture in ['arm64', 'aarch64'] else '/usr/local' }}"
+    homebrew_prefix: "{{ '/opt/homebrew' if ansible_facts['architecture'] in ['arm64', 'aarch64'] else '/usr/local' }}"
   changed_when: false
 
 - name: Check for Homebrew

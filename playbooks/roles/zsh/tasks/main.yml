@@ -4,7 +4,7 @@
     that:
       - zsh_target_user | length > 0
       - zsh_target_home | length > 0
-      - ansible_system in ['Linux', 'Darwin']
+      - ansible_facts['system'] in ['Linux', 'Darwin']
     fail_msg: Resolve the zsh target user and home before applying this role.
   tags:
     - user
@@ -19,7 +19,7 @@
   become: true
   when:
     - zsh_install_system_packages | bool
-    - ansible_system == 'Linux'
+    - ansible_facts['system'] == 'Linux'
   tags:
     - system
 
@@ -32,7 +32,7 @@
     - zsh_install_system_packages | bool
     - zsh_install_direnv_package | bool
     - zsh_target_user != 'root'
-    - ansible_system == 'Linux'
+    - ansible_facts['system'] == 'Linux'
   tags:
     - system
 
@@ -45,7 +45,7 @@
     - zsh_install_system_packages | bool
     - zsh_install_desktop_packages | bool
     - zsh_target_user != 'root'
-    - ansible_system == 'Linux'
+    - ansible_facts['system'] == 'Linux'
   tags:
     - system
 
@@ -57,7 +57,7 @@
         - system
   when:
     - zsh_install_system_packages | bool
-    - ansible_system == 'Darwin'
+    - ansible_facts['system'] == 'Darwin'
   tags:
     - system
 
@@ -66,7 +66,7 @@
     path: "{{ zsh_target_directory_item.path }}"
     state: directory
     mode: "{{ zsh_target_directory_item.mode }}"
-  become: "{{ ansible_user_id != zsh_target_user }}"
+  become: "{{ ansible_facts['user_id'] != zsh_target_user }}"
   become_user: "{{ zsh_target_user }}"
   loop:
     - path: "{{ zsh_target_home }}/.local/bin"
@@ -88,7 +88,7 @@
     version: "{{ fzf_version }}"
     depth: 1
     update: true
-  become: "{{ ansible_user_id != zsh_target_user }}"
+  become: "{{ ansible_facts['user_id'] != zsh_target_user }}"
   become_user: "{{ zsh_target_user }}"
   environment:
     HOME: "{{ zsh_target_home }}"
@@ -99,7 +99,7 @@
 - name: Check for the target user's fzf binary
   ansible.builtin.stat:
     path: "{{ zsh_target_home }}/.local/share/fzf/bin/fzf"
-  become: "{{ ansible_user_id != zsh_target_user }}"
+  become: "{{ ansible_facts['user_id'] != zsh_target_user }}"
   become_user: "{{ zsh_target_user }}"
   register: fzf_bin
   tags:
@@ -112,7 +112,7 @@
       - --bin
   args:
     chdir: "{{ zsh_target_home }}/.local/share/fzf"
-  become: "{{ ansible_user_id != zsh_target_user }}"
+  become: "{{ ansible_facts['user_id'] != zsh_target_user }}"
   become_user: "{{ zsh_target_user }}"
   environment:
     HOME: "{{ zsh_target_home }}"
@@ -126,7 +126,7 @@
     dest: "{{ zsh_target_home }}/.local/bin/fzf"
     state: link
     force: true
-  become: "{{ ansible_user_id != zsh_target_user }}"
+  become: "{{ ansible_facts['user_id'] != zsh_target_user }}"
   become_user: "{{ zsh_target_user }}"
   tags:
     - user
@@ -135,7 +135,7 @@
   ansible.builtin.stat:
     path: "{{ zsh_target_home }}/.zshrc"
     checksum_algorithm: sha1
-  become: "{{ ansible_user_id != zsh_target_user }}"
+  become: "{{ ansible_facts['user_id'] != zsh_target_user }}"
   become_user: "{{ zsh_target_user }}"
   register: zshrc_existing
   tags:
@@ -144,7 +144,7 @@
 - name: Read an unknown existing zshrc before migration
   ansible.builtin.slurp:
     src: "{{ zsh_target_home }}/.zshrc"
-  become: "{{ ansible_user_id != zsh_target_user }}"
+  become: "{{ ansible_facts['user_id'] != zsh_target_user }}"
   become_user: "{{ zsh_target_user }}"
   register: zshrc_unknown_content
   when:
@@ -181,7 +181,7 @@
     dest: "{{ zsh_target_home }}/.zshrc"
     mode: "0644"
     backup: true
-  become: "{{ ansible_user_id != zsh_target_user }}"
+  become: "{{ ansible_facts['user_id'] != zsh_target_user }}"
   become_user: "{{ zsh_target_user }}"
   when:
     - zshrc_existing.stat.exists
@@ -196,7 +196,7 @@
     path: "{{ zsh_config_directory_item.path }}"
     state: directory
     mode: "{{ zsh_config_directory_item.mode }}"
-  become: "{{ ansible_user_id != zsh_target_user }}"
+  become: "{{ ansible_facts['user_id'] != zsh_target_user }}"
   become_user: "{{ zsh_target_user }}"
   loop:
     - path: "{{ zsh_target_home }}/.config/zsh"
@@ -216,7 +216,7 @@
     src: .zshrc.j2
     dest: "{{ zsh_target_home }}/.config/zsh/ansible.zsh"
     mode: "0644"
-  become: "{{ ansible_user_id != zsh_target_user }}"
+  become: "{{ ansible_facts['user_id'] != zsh_target_user }}"
   become_user: "{{ zsh_target_user }}"
   tags:
     - user
@@ -233,7 +233,7 @@
       if [ -r "$HOME/.config/zsh/ansible.zsh" ]; then
         source "$HOME/.config/zsh/ansible.zsh"
       fi
-  become: "{{ ansible_user_id != zsh_target_user }}"
+  become: "{{ ansible_facts['user_id'] != zsh_target_user }}"
   become_user: "{{ zsh_target_user }}"
   tags:
     - user
@@ -243,14 +243,14 @@
     argv:
       - "{{ zsh_target_home }}/.local/bin/sheldon"
       - --version
-  become: "{{ ansible_user_id != zsh_target_user }}"
+  become: "{{ ansible_facts['user_id'] != zsh_target_user }}"
   become_user: "{{ zsh_target_user }}"
   environment:
     HOME: "{{ zsh_target_home }}"
   register: sheldon_version_check
   changed_when: false
   failed_when: false
-  when: ansible_system == 'Linux'
+  when: ansible_facts['system'] == 'Linux'
   tags:
     - user
 
@@ -262,10 +262,10 @@
     dest: "{{ zsh_target_home }}/.cache/ansible/sheldon-install.sh"
     mode: "0700"
     checksum: "{{ sheldon_installer_checksum }}"
-  become: "{{ ansible_user_id != zsh_target_user }}"
+  become: "{{ ansible_facts['user_id'] != zsh_target_user }}"
   become_user: "{{ zsh_target_user }}"
   when:
-    - ansible_system == 'Linux'
+    - ansible_facts['system'] == 'Linux'
     - sheldon_version not in (sheldon_version_check.stdout | default(''))
   tags:
     - user
@@ -281,12 +281,12 @@
       - --to
       - "{{ zsh_target_home }}/.local/bin"
       - --force
-  become: "{{ ansible_user_id != zsh_target_user }}"
+  become: "{{ ansible_facts['user_id'] != zsh_target_user }}"
   become_user: "{{ zsh_target_user }}"
   environment:
     HOME: "{{ zsh_target_home }}"
   when:
-    - ansible_system == 'Linux'
+    - ansible_facts['system'] == 'Linux'
     - sheldon_version not in (sheldon_version_check.stdout | default(''))
   tags:
     - user
@@ -296,7 +296,7 @@
     src: plugins.toml.j2
     dest: "{{ zsh_target_home }}/.config/sheldon/plugins.toml"
     mode: "0644"
-  become: "{{ ansible_user_id != zsh_target_user }}"
+  become: "{{ ansible_facts['user_id'] != zsh_target_user }}"
   become_user: "{{ zsh_target_user }}"
   tags:
     - user
@@ -312,7 +312,7 @@
   when:
     - zsh_manage_login_shell | bool
     - zsh_target_user != 'root'
-    - ansible_system != 'Darwin'
+    - ansible_facts['system'] != 'Darwin'
   tags:
     - user
 
@@ -324,6 +324,6 @@
   when:
     - zsh_manage_login_shell | bool
     - zsh_target_user != 'root'
-    - ansible_system != 'Darwin'
+    - ansible_facts['system'] != 'Darwin'
   tags:
     - user

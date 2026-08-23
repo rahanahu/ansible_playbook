@@ -2,14 +2,14 @@
 - name: Require an LXC guest
   ansible.builtin.assert:
     that:
-      - ansible_virtualization_type == 'lxc'
-      - ansible_virtualization_role == 'guest'
+      - ansible_facts['virtualization_type'] == 'lxc'
+      - ansible_facts['virtualization_role'] == 'guest'
     fail_msg: |-
       fedora_lxc.yml is intended for an LXC guest.
 
       Detected virtualization:
-        type: {{ ansible_virtualization_type }}
-        role: {{ ansible_virtualization_role }}
+        type: {{ ansible_facts['virtualization_type'] }}
+        role: {{ ansible_facts['virtualization_role'] }}
 
       Use playbooks/fedora_workstation.yml for a desktop, or
       playbooks/fedora_system.yml for workstation system recovery.
@@ -20,10 +20,10 @@
 - name: Require systemd as the LXC service manager
   ansible.builtin.assert:
     that:
-      - ansible_service_mgr == 'systemd'
+      - ansible_facts['service_mgr'] == 'systemd'
     fail_msg: >-
       This LXC baseline expects systemd; Ansible detected
-      service_mgr={{ ansible_service_mgr }}.
+      service_mgr={{ ansible_facts['service_mgr'] }}.
   when: fedora_lxc_require_systemd | bool
   tags:
     - always

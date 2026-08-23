@@ -5,7 +5,7 @@
     state: present
     flatpakrepo_url: https://flathub.org/repo/flathub.flatpakrepo
     method: user
-  become: "{{ ansible_user_id != target_user }}"
+  become: "{{ ansible_facts['user_id'] != target_user }}"
   become_user: "{{ target_user }}"
   environment:
     HOME: "{{ target_home }}"
@@ -17,7 +17,7 @@
     state: present
     remote: flathub
     method: user
-  become: "{{ ansible_user_id != target_user }}"
+  become: "{{ ansible_facts['user_id'] != target_user }}"
   become_user: "{{ target_user }}"
   environment:
     HOME: "{{ target_home }}"

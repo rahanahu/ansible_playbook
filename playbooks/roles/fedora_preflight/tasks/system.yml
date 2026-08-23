@@ -9,15 +9,15 @@
   ansible.builtin.assert:
     that:
       - >-
-        ansible_virtualization_role != 'guest' or
-        ansible_virtualization_type not in
+        ansible_facts['virtualization_role'] != 'guest' or
+        ansible_facts['virtualization_type'] not in
         fedora_container_virtualization_types
     fail_msg: |-
-      Detected a container guest (type={{ ansible_virtualization_type }},
-      role={{ ansible_virtualization_role }}).
+      Detected a container guest (type={{ ansible_facts['virtualization_type'] }},
+      role={{ ansible_facts['virtualization_role'] }}).
 
       This playbook targets bare-metal Fedora or a full virtual machine.
-      {% if ansible_virtualization_type == 'lxc' %}
+      {% if ansible_facts['virtualization_type'] == 'lxc' %}
       Run instead:
 
         ansible-playbook playbooks/fedora_lxc.yml -i localhost, -c local

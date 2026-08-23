@@ -4,6 +4,6 @@
   roles:
     - role: zsh
     - role: docker
-      when: ansible_system != 'Darwin'
+      when: ansible_facts['system'] != 'Darwin'
     - role: k3s
     - role: helm

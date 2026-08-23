@@ -23,7 +23,7 @@
     path: "{{ target_home }}/.cache/ansible"
     state: directory
     mode: "0700"
-  become: "{{ ansible_user_id != target_user }}"
+  become: "{{ ansible_facts['user_id'] != target_user }}"
   become_user: "{{ target_user }}"
   when: not nvm_install.stat.exists
   tags:
@@ -34,7 +34,7 @@
     url: https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh
     dest: "{{ target_home }}/.cache/ansible/nvm-install.sh"
     mode: "0700"
-  become: "{{ ansible_user_id != target_user }}"
+  become: "{{ ansible_facts['user_id'] != target_user }}"
   become_user: "{{ target_user }}"
   when: not nvm_install.stat.exists
   tags:
@@ -44,7 +44,7 @@
   ansible.builtin.command:
     argv:
       - "{{ target_home }}/.cache/ansible/nvm-install.sh"
-  become: "{{ ansible_user_id != target_user }}"
+  become: "{{ ansible_facts['user_id'] != target_user }}"
   become_user: "{{ target_user }}"
   environment:
     PROFILE: /dev/null
@@ -59,7 +59,7 @@
     path: "{{ target_home }}/.local/share/zsh/init.d"
     state: directory
     mode: "0755"
-  become: "{{ ansible_user_id != target_user }}"
+  become: "{{ ansible_facts['user_id'] != target_user }}"
   become_user: "{{ target_user }}"
   tags:
     - user
@@ -72,7 +72,7 @@
       [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
       [ -s "$NVM_DIR/bash_completion" ] && . "$NVM_DIR/bash_completion"
     mode: "0644"
-  become: "{{ ansible_user_id != target_user }}"
+  become: "{{ ansible_facts['user_id'] != target_user }}"
   become_user: "{{ target_user }}"
   tags:
     - user
@@ -87,7 +87,7 @@
       [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
       [ -s "$NVM_DIR/bash_completion" ] && . "$NVM_DIR/bash_completion"
     mode: "0644"
-  become: "{{ ansible_user_id != target_user }}"
+  become: "{{ ansible_facts['user_id'] != target_user }}"
   become_user: "{{ target_user }}"
   tags:
     - user
@@ -99,7 +99,7 @@
     nvm use --lts
   args:
     executable: /bin/bash
-  become: "{{ ansible_user_id != target_user }}"
+  become: "{{ ansible_facts['user_id'] != target_user }}"
   become_user: "{{ target_user }}"
   environment:
     NVM_DIR: "{{ target_home }}/.nvm"

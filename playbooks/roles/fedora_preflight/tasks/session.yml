@@ -6,7 +6,7 @@
     fedora_current_desktop: >-
       {{ lookup('ansible.builtin.env', 'XDG_CURRENT_DESKTOP') | lower }}
     fedora_has_user_session: >-
-      {{ ansible_user_id == target_user and
+      {{ ansible_facts['user_id'] == target_user and
          lookup('ansible.builtin.env', 'XDG_SESSION_TYPE') | length > 0 }}
   changed_when: false
 

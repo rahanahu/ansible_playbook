@@ -2,10 +2,10 @@
 - name: Require a supported user environment operating system
   ansible.builtin.assert:
     that:
-      - ansible_system in ['Linux', 'Darwin']
+      - ansible_facts['system'] in ['Linux', 'Darwin']
     fail_msg: >-
       Target-user resolution supports Linux and macOS only
-      (detected {{ ansible_system }}).
+      (detected {{ ansible_facts['system'] }}).
 
 - name: Read a safe sudo caller candidate
   ansible.builtin.set_fact:
@@ -18,7 +18,7 @@
     target_resolved_user: >-
       {{ target_user | default(
          workstation_user | default(
-           ansible_user_id if ansible_user_id != 'root' else
+           ansible_facts['user_id'] if ansible_facts['user_id'] != 'root' else
            (target_sudo_user if target_sudo_user not in ['', 'root'] else
             target_user_fallback),
            true), true) }}
@@ -54,7 +54,7 @@
     database: passwd
     key: "{{ target_resolved_user }}"
     fail_key: false
-  when: ansible_system == 'Linux'
+  when: ansible_facts['system'] == 'Linux'
 
 - name: Require the target account to exist on Linux
   ansible.builtin.assert:
@@ -67,14 +67,14 @@
     fail_msg: >-
       The target user {{ target_resolved_user }} does not exist in the passwd
       database. Pass an existing account with -e target_user=<user>.
-  when: ansible_system == 'Linux'
+  when: ansible_facts['system'] == 'Linux'
 
 - name: Resolve the target home from passwd on Linux
   ansible.builtin.set_fact:
     target_resolved_home: >-
       {{ ansible_facts.getent_passwd[target_resolved_user][4] }}
   changed_when: false
-  when: ansible_system == 'Linux'
+  when: ansible_facts['system'] == 'Linux'
 
 - name: Read the target home from Directory Service on macOS
   ansible.builtin.command:
@@ -86,7 +86,7 @@
       - NFSHomeDirectory
   register: target_dscl_home
   changed_when: false
-  when: ansible_system == 'Darwin'
+  when: ansible_facts['system'] == 'Darwin'
 
 - name: Resolve the target home on macOS
   ansible.builtin.set_fact:
@@ -94,7 +94,7 @@
       {{ target_dscl_home.stdout |
          regex_replace('^NFSHomeDirectory:\\s*', '') | trim }}
   changed_when: false
-  when: ansible_system == 'Darwin'
+  when: ansible_facts['system'] == 'Darwin'
 
 - name: Validate an explicitly supplied target home
   ansible.builtin.assert:

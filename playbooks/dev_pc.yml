@@ -10,7 +10,7 @@
         - always
   roles:
     - role: docker
-      when: ansible_system != 'Darwin'
+      when: ansible_facts['system'] != 'Darwin'
     - role: uv
     - role: zsh
     - role: nvm

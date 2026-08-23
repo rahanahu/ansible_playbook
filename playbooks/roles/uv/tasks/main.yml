@@ -13,7 +13,7 @@
     argv:
       - "{{ target_home }}/.local/bin/uv"
       - --version
-  become: "{{ ansible_user_id != target_user }}"
+  become: "{{ ansible_facts['user_id'] != target_user }}"
   become_user: "{{ target_user }}"
   environment:
     HOME: "{{ target_home }}"
@@ -28,7 +28,7 @@
     path: "{{ target_home }}/.cache/ansible"
     state: directory
     mode: "0700"
-  become: "{{ ansible_user_id != target_user }}"
+  become: "{{ ansible_facts['user_id'] != target_user }}"
   become_user: "{{ target_user }}"
   when: uv_check.rc != 0
   tags:
@@ -39,7 +39,7 @@
     url: https://astral.sh/uv/install.sh
     dest: "{{ target_home }}/.cache/ansible/uv-install.sh"
     mode: "0700"
-  become: "{{ ansible_user_id != target_user }}"
+  become: "{{ ansible_facts['user_id'] != target_user }}"
   become_user: "{{ target_user }}"
   when: uv_check.rc != 0
   tags:
@@ -49,7 +49,7 @@
   ansible.builtin.command:
     argv:
       - "{{ target_home }}/.cache/ansible/uv-install.sh"
-  become: "{{ ansible_user_id != target_user }}"
+  become: "{{ ansible_facts['user_id'] != target_user }}"
   become_user: "{{ target_user }}"
   environment:
     HOME: "{{ target_home }}"

@@ -2,7 +2,7 @@
 # License : MIT
 # http://mollifier.mit-license.org/
 
-{% if ansible_system == 'Darwin' %}
+{% if ansible_facts['system'] == 'Darwin' %}
 # Add Homebrew packages to PATH on both Apple Silicon and Intel macOS.
 if [ -x /opt/homebrew/bin/brew ]; then
     eval "$(/opt/homebrew/bin/brew shellenv)"
