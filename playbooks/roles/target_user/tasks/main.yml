@@ -19,7 +19,8 @@
       {{ target_user | default(
          workstation_user | default(
            ansible_user_id if ansible_user_id != 'root' else
-           (target_sudo_user if target_sudo_user not in ['', 'root'] else ''),
+           (target_sudo_user if target_sudo_user not in ['', 'root'] else
+            target_user_fallback),
            true), true) }}
     target_requested_home: >-
       {{ target_home | default(workstation_home | default('', true), true) }}

@@ -9,18 +9,40 @@
   tags:
     - user
 
-- name: Install zsh environment packages on Linux
+- name: Install core zsh environment packages on Linux
   ansible.builtin.package:
     name:
       - zsh
       - git
       - zoxide
-      - direnv
-      - wl-clipboard
     state: present
   become: true
   when:
     - zsh_install_system_packages | bool
+    - ansible_system == 'Linux'
+  tags:
+    - system
+
+- name: Install direnv for zsh on Linux
+  ansible.builtin.package:
+    name: direnv
+    state: present
+  become: true
+  when:
+    - zsh_install_system_packages | bool
+    - zsh_install_direnv_package | bool
+    - ansible_system == 'Linux'
+  tags:
+    - system
+
+- name: Install desktop zsh integration packages on Linux
+  ansible.builtin.package:
+    name: wl-clipboard
+    state: present
+  become: true
+  when:
+    - zsh_install_system_packages | bool
+    - zsh_install_desktop_packages | bool
     - ansible_system == 'Linux'
   tags:
     - system

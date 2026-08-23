@@ -8,7 +8,7 @@
   tags:
     - user
 
-- name: Check whether uv is installed for the workstation user
+- name: Check whether uv is installed for the target user
   ansible.builtin.command:
     argv:
       - "{{ target_home }}/.local/bin/uv"
@@ -23,7 +23,7 @@
   tags:
     - user
 
-- name: Create the workstation user Ansible cache directory
+- name: Create the target user Ansible cache directory
   ansible.builtin.file:
     path: "{{ target_home }}/.cache/ansible"
     state: directory
@@ -34,7 +34,7 @@
   tags:
     - user
 
-- name: Download the uv installer for the workstation user
+- name: Download the uv installer for the target user
   ansible.builtin.get_url:
     url: https://astral.sh/uv/install.sh
     dest: "{{ target_home }}/.cache/ansible/uv-install.sh"
@@ -45,7 +45,7 @@
   tags:
     - user
 
-- name: Install uv for the workstation user
+- name: Install uv for the target user
   ansible.builtin.command:
     argv:
       - "{{ target_home }}/.cache/ansible/uv-install.sh"

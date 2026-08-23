@@ -1,4 +1,16 @@
 ---
+- name: Detect graphics hardware for a session-only run
+  ansible.builtin.include_tasks:
+    file: detect.yml
+    apply:
+      tags:
+        - session
+        - graphics
+  when: fedora44_graphics_has_amd is not defined
+  tags:
+    - session
+    - graphics
+
 - name: Read OpenGL renderer information in the workstation session
   ansible.builtin.command:
     argv:
@@ -8,16 +20,34 @@
   changed_when: false
   failed_when: false
   when:
-    - ansible_user_id == target_user
+    - fedora44_has_user_session | default(false) | bool
     - lookup('ansible.builtin.env', 'DISPLAY') | length > 0
 
-- name: Require a hardware OpenGL renderer in the workstation session
+- name: Require available OpenGL renderer information
   ansible.builtin.assert:
     that:
       - fedora44_glxinfo.rc == 0
-      - "'llvmpipe' not in (fedora44_glxinfo.stdout | lower)"
-    fail_msg: glxinfo did not report a working AMD/Mesa hardware renderer.
+    fail_msg: >-
+      glxinfo could not read renderer information from the active workstation
+      session.
   when:
     - fedora44_graphics_strict_checks | bool
-    - ansible_user_id == target_user
+    - fedora44_has_user_session | default(false) | bool
+    - lookup('ansible.builtin.env', 'DISPLAY') | length > 0
+
+- name: Require AMD as the active session renderer when explicitly requested
+  ansible.builtin.assert:
+    that:
+      - >-
+        (fedora44_glxinfo.stdout | regex_search('(?i)(AMD|Radeon)')) is not none
+      - "'llvmpipe' not in (fedora44_glxinfo.stdout | lower)"
+    fail_msg: >-
+      An AMD GPU is present, but the active OpenGL session renderer is not AMD
+      hardware. Disable fedora44_graphics_require_amd_session_renderer for an
+      intentional mixed-GPU renderer selection.
+  when:
+    - fedora44_graphics_strict_checks | bool
+    - fedora44_graphics_require_amd_session_renderer | bool
+    - fedora44_graphics_has_amd | bool
+    - fedora44_has_user_session | default(false) | bool
     - lookup('ansible.builtin.env', 'DISPLAY') | length > 0

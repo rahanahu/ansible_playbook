@@ -1,0 +1,6 @@
+---
+fedora44_lxc_require_systemd: true
+fedora44_lxc_usable_systemd_states:
+  - running
+  - degraded
+  - starting

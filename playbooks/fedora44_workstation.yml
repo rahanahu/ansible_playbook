@@ -4,6 +4,7 @@
 - ansible.builtin.import_playbook: user.yml
   vars:
     user_require_non_root_target: true
+    user_profile_default: workstation
 
 - name: Configure workstation session checks and root zsh
   hosts: localhost

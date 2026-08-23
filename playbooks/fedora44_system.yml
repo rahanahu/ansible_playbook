@@ -1,5 +1,5 @@
 ---
-- name: Configure Fedora 44 system components
+- name: Configure Fedora 44 workstation system components
   hosts: localhost
   connection: local
   gather_facts: true
@@ -13,7 +13,7 @@
         - system
         - preflight
 
-    - name: Configure the Radeon and Mesa baseline
+    - name: Configure the common and AMD graphics baseline
       ansible.builtin.import_role:
         name: fedora44_graphics
         tasks_from: system

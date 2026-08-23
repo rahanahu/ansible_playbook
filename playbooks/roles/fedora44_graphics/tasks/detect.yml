@@ -1,0 +1,40 @@
+---
+- name: Read numeric PCI graphics devices
+  ansible.builtin.command:
+    argv:
+      - lspci
+      - -Dn
+  register: fedora44_graphics_pci_numeric
+  changed_when: false
+  failed_when: false
+
+- name: Require successful PCI graphics detection
+  ansible.builtin.assert:
+    that:
+      - fedora44_graphics_pci_numeric.rc == 0
+    fail_msg: >-
+      AMD graphics detection could not run because lspci failed with rc={{
+      fedora44_graphics_pci_numeric.rc }}. Ensure pciutils is installed and PCI
+      information is accessible.
+
+- name: Select AMD PCI graphics devices
+  ansible.builtin.set_fact:
+    fedora44_graphics_amd_pci_lines: >-
+      {{ fedora44_graphics_pci_numeric.stdout_lines |
+         select('match',
+                '^[0-9A-Fa-f:.]+\s+(0300|0302|0380):\s+1002:') |
+         list }}
+  changed_when: false
+
+- name: Publish AMD graphics detection
+  ansible.builtin.set_fact:
+    fedora44_graphics_has_amd: >-
+      {{ fedora44_graphics_amd_pci_lines | length > 0 }}
+  changed_when: false
+
+- name: Report AMD graphics detection
+  ansible.builtin.debug:
+    msg: >-
+      AMD GPU {{ 'detected; AMD-specific validation is enabled.'
+      if fedora44_graphics_has_amd else
+      'not detected; AMD-specific configuration and validation are skipped.' }}

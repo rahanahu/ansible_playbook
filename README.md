@@ -1,13 +1,15 @@
 # ansible_playbook
 
-This repository contains Ansible playbooks and roles to provision developer workstations.
+This repository contains Ansible playbooks and roles to provision developer
+workstations and Fedora LXC guests.
 
 ## Which playbook should I run?
 
 | Goal | Playbook |
 |---|---|
 | Build a complete Fedora 44 desktop | `playbooks/fedora44_workstation.yml` |
-| Repair or configure Fedora system components only | `playbooks/fedora44_system.yml` |
+| Configure a Fedora 44 LXC guest | `playbooks/fedora44_lxc.yml` |
+| Repair workstation system components only | `playbooks/fedora44_system.yml` |
 | Configure one user's home environment | `playbooks/user.yml` |
 | Build Hazkey after validating Fcitx5/Mozc | `playbooks/hazkey.yml` |
 
@@ -20,7 +22,7 @@ ansible-playbook playbooks/fedora44_workstation.yml -i localhost, -c local -K
 ## Supported targets
 
 - Ubuntu / Debian
-- Fedora
+- Fedora Workstation and Fedora LXC
 - macOS (Darwin) — Docker and k3s are skipped
 
 ## Quick start
@@ -47,7 +49,7 @@ ansible-playbook playbooks/k3s_pc.yml -i localhost, -c local
 
 The Fedora workstation wrapper combines machine-wide `system` tasks,
 per-account `user` tasks, root zsh, and conditional graphical `session` checks. It installs the
-Radeon/Mesa baseline, RPM Fusion, desktop essentials, CLI diagnostics,
+common Mesa baseline, detected AMD support, RPM Fusion, desktop essentials, CLI diagnostics,
 development tools, Steam/MangoHud, and Fcitx5/Mozc.
 
 Running as the normal login user is recommended. The target defaults to that
@@ -95,8 +97,9 @@ ansible-playbook playbooks/fedora44_workstation.yml \
   -i localhost, -c local -K --tags user
 ```
 
-For system-only recovery, especially from a direct root login, no target user is
-needed:
+For workstation system-only recovery, especially from a direct root login, no
+target user is needed. This remains a workstation baseline and intentionally
+rejects LXC containers:
 
 ```bash
 ansible-playbook playbooks/fedora44_system.yml -i localhost, -c local
@@ -113,9 +116,66 @@ ansible-playbook playbooks/user.yml -i localhost, -c local \
   -e target_user=yusuke
 ```
 
-The normal-user profile enables zsh, direnv, uv, nvm, Docker access, and Fedora
-desktop user configuration. The root profile installs only the managed zsh
-environment: direnv, uv, nvm, Fcitx, ProtonPlus, and login-shell changes are off.
+`user.yml` supports `workstation`, `root-safe`, and `server` profiles. A normal
+user defaults to `workstation`; root defaults to `root-safe`. The workstation
+profile enables zsh, direnv, uv, nvm, Docker access, and Fedora desktop user
+configuration. `root-safe` installs only the managed zsh environment. Direnv,
+uv, nvm, Fcitx, ProtonPlus, and login-shell changes are disabled.
+
+The `server` profile enables zsh, uv, and nvm without desktop integration or a
+login-shell change. It can be selected explicitly, including for root:
+
+```bash
+ansible-playbook playbooks/user.yml -i localhost, -c local \
+  -e target_user=root \
+  -e user_profile=server
+```
+
+Server direnv integration remains off unless
+`-e user_server_enable_direnv=true` is supplied.
+
+### Fedora 44 LXC
+
+The LXC entrypoint is a separate headless baseline. It validates Fedora 44, an
+LXC guest, and a usable systemd environment, then installs CLI tools, headless
+zsh dependencies, and the target user's `server` profile. A direct root login
+needs only:
+
+```bash
+ansible-playbook playbooks/fedora44_lxc.yml -i localhost, -c local
+```
+
+That command targets `/root`, installs zsh/fzf/zoxide/Sheldon/uv/nvm, and keeps
+root's login shell as bash. To configure an existing ordinary account while
+running Ansible as root, specify it explicitly; its home is read from passwd:
+
+```bash
+ansible-playbook playbooks/fedora44_lxc.yml \
+  -i localhost, -c local \
+  -e target_user=yusuke
+```
+
+The LXC baseline does not manage Docker, graphics/GPU devices, KDE, Wayland,
+desktop multimedia, gaming, Fcitx, Hazkey, or Snapper. It does not require
+SELinux Enforcing or active firewalld. Guest firewalld is opt-in with
+`-e fedora44_lxc_install_firewalld=true`; Proxmox host networking and firewall
+policy remain outside this repository.
+
+Running the workstation entrypoint in LXC, or the LXC entrypoint on bare metal
+or KVM, stops early with the correct replacement command instead of skipping a
+large number of incompatible tasks.
+
+### Fedora workstation graphics
+
+The graphics role installs common Mesa, Vulkan, and OpenGL userspace for Fedora
+workstations. It detects AMD graphics controllers from PCI vendor ID `1002` and
+runs amdgpu/RADV validation only when an AMD GPU is present. AMD absence is not
+an error, and no package or existing driver is removed based on GPU vendor.
+
+NVIDIA- and Intel-specific driver management is not implemented. On a mixed-GPU
+system, the active graphical session is not required to render on AMD by
+default. Set `fedora44_graphics_require_amd_session_renderer=true` only when the
+session is intentionally expected to use the AMD adapter.
 
 Desktop essentials include full FFmpeg, RPM Fusion GStreamer/VA-API components,
 archive/filesystem support, KDE integration, Japanese/emoji fonts, and hardware

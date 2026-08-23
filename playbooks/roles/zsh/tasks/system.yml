@@ -1,15 +1,37 @@
 ---
-- name: Install zsh environment packages on Fedora
+- name: Install core zsh environment packages on Fedora
   ansible.builtin.dnf:
     name:
       - zsh
       - git
       - zoxide
-      - direnv
-      - wl-clipboard
     state: present
   become: true
   when: ansible_distribution == 'Fedora'
+  tags:
+    - system
+    - zsh
+
+- name: Install direnv for zsh on Fedora
+  ansible.builtin.dnf:
+    name: direnv
+    state: present
+  become: true
+  when:
+    - ansible_distribution == 'Fedora'
+    - zsh_install_direnv_package | bool
+  tags:
+    - system
+    - zsh
+
+- name: Install desktop zsh integration packages on Fedora
+  ansible.builtin.dnf:
+    name: wl-clipboard
+    state: present
+  become: true
+  when:
+    - ansible_distribution == 'Fedora'
+    - zsh_install_desktop_packages | bool
   tags:
     - system
     - zsh

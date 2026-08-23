@@ -1,5 +1,5 @@
 ---
-- name: Configure a target user's workstation environment
+- name: Configure a target user's home environment
   hosts: localhost
   connection: local
   gather_facts: true
@@ -12,52 +12,83 @@
         target_user_allow_root: >-
           {{ not (user_require_non_root_target | default(false) | bool) }}
       tags:
+        - always
         - user
-        - development
-        - docker
-        - uv
-        - zsh
-        - nvm
-        - gaming
-        - input
-        - session
-        - preflight
-        - graphics
 
-    - name: Select safe defaults for the target profile
+    - name: Select the requested user profile
       ansible.builtin.set_fact:
-        target_user_profile: >-
-          {{ 'root' if target_user == 'root' else
-             (user_profile | default('workstation', true)) }}
+        target_user_profile_requested: >-
+          {{ user_profile | default(
+             user_profile_default | default(
+               'root-safe' if target_user == 'root' else 'workstation', true),
+             true) }}
       changed_when: false
       tags:
+        - always
         - user
-        - development
-        - docker
-        - uv
-        - zsh
-        - nvm
-        - gaming
-        - input
-        - session
-        - preflight
-        - graphics
+
+    - name: Normalize the user profile name
+      ansible.builtin.set_fact:
+        target_user_profile: >-
+          {{ 'root-safe' if target_user_profile_requested == 'root'
+             else target_user_profile_requested }}
+      changed_when: false
+      tags:
+        - always
+        - user
+
+    - name: Validate the user profile
+      ansible.builtin.assert:
+        that:
+          - target_user_profile in ['workstation', 'root-safe', 'server']
+          - target_user != 'root' or target_user_profile != 'workstation'
+        fail_msg: |-
+          Unsupported or unsafe user profile combination:
+            target_user={{ target_user }}
+            user_profile={{ target_user_profile }}
+
+          Supported profiles are workstation, root-safe, and server.
+          Use root-safe or server when target_user=root.
+      tags:
+        - always
+        - user
+
+    - name: Resolve user profile capabilities
+      ansible.builtin.set_fact:
+        target_profile_manage_login_shell: >-
+          {{ target_user_profile == 'workstation' }}
+        target_profile_enable_direnv: >-
+          {{ target_user_profile == 'workstation' or
+             (target_user_profile == 'server' and
+              (user_server_enable_direnv | default(false) | bool)) }}
+        target_profile_enable_uv: >-
+          {{ target_user_profile in ['workstation', 'server'] }}
+        target_profile_enable_nvm: >-
+          {{ target_user_profile in ['workstation', 'server'] }}
+        target_profile_enable_docker_access: >-
+          {{ target_user_profile == 'workstation' }}
+        target_profile_enable_desktop: >-
+          {{ target_user_profile == 'workstation' }}
+      changed_when: false
+      tags:
+        - always
+        - user
 
   tasks:
     - name: Configure Docker access for a workstation user
       ansible.builtin.import_role:
         name: docker
         tasks_from: user
-      when: target_user_profile == 'workstation'
+      when: target_profile_enable_docker_access | bool
       tags:
         - user
         - development
         - docker
 
-    - name: Configure uv for a workstation user
+    - name: Configure uv for the target user
       ansible.builtin.import_role:
         name: uv
-      when: target_user_profile == 'workstation'
+      when: target_profile_enable_uv | bool
       tags:
         - user
         - development
@@ -73,18 +104,20 @@
       vars:
         zsh_target_user: "{{ target_user }}"
         zsh_target_home: "{{ target_home }}"
-        zsh_manage_login_shell: "{{ target_user_profile == 'workstation' }}"
-        zsh_enable_direnv: "{{ target_user_profile == 'workstation' }}"
+        zsh_manage_login_shell: "{{ target_profile_manage_login_shell }}"
+        zsh_enable_direnv: "{{ target_profile_enable_direnv }}"
         zsh_install_system_packages: false
       tags:
         - user
         - development
         - zsh
 
-    - name: Configure nvm for a workstation user
+    - name: Configure nvm for the target user
       ansible.builtin.import_role:
         name: nvm
-      when: target_user_profile == 'workstation'
+      vars:
+        nvm_allow_root: "{{ target_user_profile == 'server' }}"
+      when: target_profile_enable_nvm | bool
       tags:
         - user
         - development
@@ -95,7 +128,7 @@
         name: fedora44_gaming
         tasks_from: user
       when:
-        - target_user_profile == 'workstation'
+        - target_profile_enable_desktop | bool
         - ansible_distribution == 'Fedora'
       tags:
         - user
@@ -106,7 +139,7 @@
         name: fedora44_input
         tasks_from: user
       when:
-        - target_user_profile == 'workstation'
+        - target_profile_enable_desktop | bool
         - ansible_distribution == 'Fedora'
       tags:
         - user

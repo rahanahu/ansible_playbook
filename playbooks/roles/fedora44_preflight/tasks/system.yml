@@ -1,14 +1,32 @@
 ---
-- name: Require the intended Fedora release
+- name: Reject containers from the workstation system baseline
   ansible.builtin.assert:
     that:
-      - ansible_distribution == 'Fedora'
       - >-
-        fedora44_allow_other_release | bool or
-        ansible_distribution_major_version == fedora44_required_release
-    fail_msg: >-
-      This playbook targets Fedora {{ fedora44_required_release }}; detected
-      {{ ansible_distribution }} {{ ansible_distribution_major_version }}.
+        ansible_virtualization_role != 'guest' or
+        ansible_virtualization_type not in
+        fedora44_container_virtualization_types
+    fail_msg: |-
+      Detected a container guest (type={{ ansible_virtualization_type }},
+      role={{ ansible_virtualization_role }}).
+
+      This playbook targets bare-metal Fedora or a full virtual machine.
+      {% if ansible_virtualization_type == 'lxc' %}
+      Run instead:
+
+        ansible-playbook playbooks/fedora44_lxc.yml -i localhost, -c local
+      {% else %}
+      No workstation baseline is provided for this container type.
+      {% endif %}
+  tags:
+    - always
+    - preflight
+
+- name: Validate the Fedora release
+  ansible.builtin.import_tasks: release.yml
+  tags:
+    - always
+    - preflight
 
 - name: Read SELinux enforcement mode
   ansible.builtin.command:

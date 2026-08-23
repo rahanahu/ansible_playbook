@@ -4,19 +4,21 @@
     that:
       - target_user is defined
       - target_home is defined
-      - target_user != 'root'
-    fail_msg: Resolve a non-root target_user and target_home before the nvm role.
+      - target_user != 'root' or nvm_allow_root | bool
+    fail_msg: >-
+      Resolve target_user and target_home before the nvm role. Root is allowed
+      only when nvm_allow_root=true for an explicit server profile.
   tags:
     - user
 
-- name: Check whether nvm is installed for the workstation user
+- name: Check whether nvm is installed for the target user
   ansible.builtin.stat:
     path: "{{ target_home }}/.nvm/nvm.sh"
   register: nvm_install
   tags:
     - user
 
-- name: Create the workstation user Ansible cache directory
+- name: Create the target user Ansible cache directory
   ansible.builtin.file:
     path: "{{ target_home }}/.cache/ansible"
     state: directory
@@ -38,7 +40,7 @@
   tags:
     - user
 
-- name: Install nvm for the workstation user
+- name: Install nvm for the target user
   ansible.builtin.command:
     argv:
       - "{{ target_home }}/.cache/ansible/nvm-install.sh"
@@ -52,7 +54,7 @@
   tags:
     - user
 
-- name: Ensure the workstation zsh init directory exists
+- name: Ensure the target user zsh init directory exists
   ansible.builtin.file:
     path: "{{ target_home }}/.local/share/zsh/init.d"
     state: directory
@@ -62,7 +64,7 @@
   tags:
     - user
 
-- name: Deploy the workstation nvm zsh snippet
+- name: Deploy the target user nvm zsh snippet
   ansible.builtin.copy:
     dest: "{{ target_home }}/.local/share/zsh/init.d/nvm.sh"
     content: |
@@ -75,7 +77,7 @@
   tags:
     - user
 
-- name: Configure nvm in the workstation bash profile
+- name: Configure nvm in the target user bash profile
   ansible.builtin.blockinfile:
     path: "{{ target_home }}/.bashrc"
     marker: "# {mark} ANSIBLE MANAGED NVM"

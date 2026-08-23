@@ -10,6 +10,8 @@ zsh_target_home: "{{ target_home }}"
 zsh_manage_login_shell: true
 zsh_enable_direnv: true
 zsh_install_system_packages: true
+zsh_install_direnv_package: true
+zsh_install_desktop_packages: true
 
 # Rendered checksums from the former whole-file .zshrc template. These allow
 # unmodified legacy files to be migrated without deleting user customizations.
