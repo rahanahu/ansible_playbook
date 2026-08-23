@@ -26,19 +26,8 @@ github = "romkatv/zsh-defer"
 github = "zsh-users/zsh-autosuggestions"
 apply = ["defer"]
 
+# zsh-syntax-highlighting should be loaded after other ZLE-related plugins
 [plugins.zsh-syntax-highlighting]
 github = "zsh-users/zsh-syntax-highlighting"
-apply = ["defer"]
-
-[plugins.fzf]
-github = "junegunn/fzf"
-use = [
-    "shell/key-bindings.zsh",
-    "shell/completion.zsh",
-]
-apply = ["defer"]
-
-[plugins.enhancd]
-github = "babarot/enhancd"
 apply = ["defer"]
 

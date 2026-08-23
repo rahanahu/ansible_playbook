@@ -1,0 +1,4 @@
+---
+fedora44_install_gaming_extras: false
+fedora44_install_protonplus: false
+fedora44_install_cli_extras: false

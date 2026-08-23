@@ -1,0 +1,36 @@
+---
+- name: Determine Homebrew prefix
+  ansible.builtin.set_fact:
+    homebrew_prefix: >-
+      {{ '/opt/homebrew'
+         if ansible_architecture in ['arm64', 'aarch64']
+         else '/usr/local' }}
+  changed_when: false
+
+- name: Check for Homebrew
+  ansible.builtin.stat:
+    path: "{{ homebrew_prefix }}/bin/brew"
+  register: brew_stat
+
+- name: Install Homebrew if missing
+  ansible.builtin.shell: >-
+    /bin/bash -c
+    "$(curl -fsSL
+    https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+  environment:
+    NONINTERACTIVE: "1"
+  when: not brew_stat.stat.exists
+  become: false
+
+- name: Ensure Homebrew packages are installed
+  community.general.homebrew:
+    name:
+      - zsh
+      - git
+      - zoxide
+      - direnv
+      - sheldon
+    state: present
+    update_homebrew: false
+    path: "{{ homebrew_prefix }}/bin"
+  become: false

@@ -1,0 +1,179 @@
+---
+- name: Require Fedora for Hazkey package dependencies
+  ansible.builtin.assert:
+    that:
+      - ansible_distribution == 'Fedora'
+      - ansible_user_id != 'root'
+      - >-
+        hazkey_allow_other_fedora_release | bool or
+        ansible_distribution_major_version == hazkey_required_fedora_release
+    fail_msg: >-
+      The Hazkey role currently supports Fedora {{
+      hazkey_required_fedora_release }} and must be run as the normal login user.
+
+- name: Install Hazkey build dependencies
+  ansible.builtin.dnf:
+    name:
+      - git
+      - cmake
+      - ninja-build
+      - gcc
+      - gcc-c++
+      - gettext
+      - swift-lang
+      - fcitx5-devel
+      - qt6-qtbase-devel
+      - qt6-qttools-devel
+      - protobuf-devel
+      - protobuf-compiler
+    state: present
+  become: true
+
+- name: Install Hazkey Vulkan build dependencies
+  ansible.builtin.dnf:
+    name:
+      - vulkan-headers
+      - vulkan-loader-devel
+      - spirv-headers-devel
+      - glslc
+      - vulkan-tools
+    state: present
+  become: true
+  when: hazkey_enable_vulkan | bool
+
+- name: Create the source directory
+  ansible.builtin.file:
+    path: "{{ hazkey_source_root }}"
+    state: directory
+    owner: "{{ ansible_user_id }}"
+    mode: "0755"
+
+- name: Check for an existing Hazkey checkout
+  ansible.builtin.stat:
+    path: "{{ hazkey_source_directory }}/.git"
+  register: hazkey_checkout_stat
+
+- name: Check out Hazkey with submodules
+  ansible.builtin.git:
+    repo: "{{ hazkey_repository }}"
+    dest: "{{ hazkey_source_directory }}"
+    version: "{{ hazkey_version }}"
+    recursive: true
+    update: "{{ hazkey_update_repository | bool }}"
+  when:
+    - not hazkey_checkout_stat.stat.exists or hazkey_update_repository | bool
+
+- name: Check the Vulkan baseline before a Vulkan build
+  ansible.builtin.command:
+    argv:
+      - vulkaninfo
+      - --summary
+  register: hazkey_vulkaninfo
+  changed_when: false
+  failed_when: false
+  when: hazkey_enable_vulkan | bool
+
+- name: Require a hardware Vulkan device for Hazkey
+  ansible.builtin.assert:
+    that:
+      - hazkey_vulkaninfo.rc == 0
+      - "'llvmpipe' not in (hazkey_vulkaninfo.stdout | lower)"
+    fail_msg: >-
+      Hazkey Vulkan was requested, but vulkaninfo did not report a working
+      hardware Vulkan device.
+  when: hazkey_enable_vulkan | bool
+
+- name: Read the checked-out Hazkey commit
+  ansible.builtin.command:
+    argv:
+      - git
+      - rev-parse
+      - HEAD
+  args:
+    chdir: "{{ hazkey_source_directory }}"
+  register: hazkey_head
+  changed_when: false
+
+- name: Record the installed Hazkey source commit
+  ansible.builtin.copy:
+    dest: "{{ hazkey_commit_record_file }}"
+    content: "{{ hazkey_head.stdout | trim }}\n"
+    owner: "{{ ansible_user_id }}"
+    mode: "0644"
+
+- name: Select the Hazkey build configuration
+  ansible.builtin.set_fact:
+    hazkey_vulkan_setting: "{{ 'ON' if hazkey_enable_vulkan | bool else 'OFF' }}"
+    hazkey_build_directory: >-
+      {{ hazkey_source_directory }}/build-{{
+      'vulkan' if hazkey_enable_vulkan | bool else 'cpu' }}
+  changed_when: false
+
+- name: Define the Hazkey build signature
+  ansible.builtin.set_fact:
+    hazkey_build_signature: >-
+      {{ hazkey_head.stdout | trim }}|GGML_VULKAN={{
+      hazkey_vulkan_setting }}|PREFIX={{ hazkey_install_prefix }}
+    hazkey_build_stamp: "{{ hazkey_build_directory }}/.ansible-installed"
+  changed_when: false
+
+- name: Check the Hazkey build stamp
+  ansible.builtin.stat:
+    path: "{{ hazkey_build_stamp }}"
+  register: hazkey_build_stamp_stat
+
+- name: Read the Hazkey build stamp
+  ansible.builtin.slurp:
+    src: "{{ hazkey_build_stamp }}"
+  register: hazkey_build_stamp_content
+  when: hazkey_build_stamp_stat.stat.exists
+
+- name: Decide whether Hazkey must be rebuilt
+  ansible.builtin.set_fact:
+    hazkey_rebuild_required: >-
+      {{ hazkey_force_rebuild | bool or
+         not hazkey_build_stamp_stat.stat.exists or
+         ((hazkey_build_stamp_content.content | default('') | b64decode | trim)
+          != hazkey_build_signature) }}
+  changed_when: false
+
+- name: Configure Hazkey
+  ansible.builtin.command:
+    argv:
+      - cmake
+      - -S
+      - "{{ hazkey_source_directory }}"
+      - -B
+      - "{{ hazkey_build_directory }}"
+      - -G
+      - Ninja
+      - -DCMAKE_BUILD_TYPE=Release
+      - "-DCMAKE_INSTALL_PREFIX={{ hazkey_install_prefix }}"
+      - "-DGGML_VULKAN={{ hazkey_vulkan_setting }}"
+  when: hazkey_rebuild_required | bool
+
+- name: Build Hazkey
+  ansible.builtin.command:
+    argv:
+      - cmake
+      - --build
+      - "{{ hazkey_build_directory }}"
+      - --parallel
+  when: hazkey_rebuild_required | bool
+
+- name: Install Hazkey
+  ansible.builtin.command:
+    argv:
+      - cmake
+      - --install
+      - "{{ hazkey_build_directory }}"
+  become: true
+  when: hazkey_rebuild_required | bool
+
+- name: Record the successful Hazkey build
+  ansible.builtin.copy:
+    dest: "{{ hazkey_build_stamp }}"
+    content: "{{ hazkey_build_signature }}\n"
+    owner: "{{ ansible_user_id }}"
+    mode: "0644"
+  when: hazkey_rebuild_required | bool

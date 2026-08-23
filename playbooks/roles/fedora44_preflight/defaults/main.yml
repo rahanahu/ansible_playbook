@@ -1,0 +1,5 @@
+---
+fedora44_required_release: "44"
+fedora44_allow_other_release: false
+fedora44_require_kde_wayland: true
+fedora44_require_security_baseline: true

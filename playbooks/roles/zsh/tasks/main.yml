@@ -1,111 +1,196 @@
-- name: Install zsh
-  apt:
+---
+- name: Set target zsh user
+  ansible.builtin.set_fact:
+    zsh_user: "{{ ansible_user_id }}"
+    zsh_user_home: "{{ ansible_user_dir }}"
+  changed_when: false
+
+- name: Validate supported operating system
+  ansible.builtin.assert:
+    that:
+      - ansible_system in ['Linux', 'Darwin']
+    fail_msg: >-
+      The zsh role supports Linux and macOS only
+      (detected: {{ ansible_system }}).
+
+- name: Install zsh environment packages (Linux)
+  ansible.builtin.package:
     name:
       - zsh
-    state: present
-    update_cache: yes
-  become: yes
-
-- name: Deploy .zshrc
-  template:
-    src: .zshrc.j2
-    dest: "/home/{{ ansible_user_id }}/.zshrc"
-    owner: "{{ ansible_user_id }}"
-    group: "{{ ansible_user_id }}"
-    mode: "0644"
-
-- name: Ensure ~/.local/bin exists
-  file:
-    path: "/home/{{ ansible_user_id }}/.local/bin"
-    state: directory
-    owner: "{{ ansible_user_id }}"
-    group: "{{ ansible_user_id }}"
-    mode: "0755"
-
-- name: Download shelldon install script
-  get_url:
-    url: https://rossmacarthur.github.io/install/crate.sh
-    dest: /tmp/shelldon_install.sh
-    mode: "0700"
-
-- name: Run shelldon install script
-  command: /tmp/shelldon_install.sh --repo rossmacarthur/sheldon --to /home/{{ ansible_user_id }}/.local/bin
-  args:
-    creates: "/home/{{ ansible_user_id }}/.local/bin/sheldon"
-
-- name: Ensure sheldon config dir exists
-  file:
-    path: "/home/{{ ansible_user_id }}/.config/sheldon"
-    state: directory
-    owner: "{{ ansible_user_id }}"
-    group: "{{ ansible_user_id }}"
-    mode: "0700"
-  become: false
-
-- name: shelldon init
-  command: /home/{{ ansible_user_id }}/.local/bin/sheldon --non-interactive init --shell zsh
-  args:
-    creates: "/home/{{ ansible_user_id }}/.config/sheldon"
-
-- name: load sheldon plugin
-  lineinfile:
-    path: "/home/{{ ansible_user_id }}/.zshrc"
-    line: 'eval "$(sheldon source)"'
-    state: present
-
-- name: Ensure git is installed (Debian/Ubuntu)
-  apt:
-    name: git
-    state: present
-    update_cache: yes
-  when: ansible_os_family == "Debian"
-  become: yes
-
-- name: Clone fzf
-  git:
-    repo: https://github.com/junegunn/fzf.git
-    dest: "/home/{{ ansible_user_id }}/.fzf"
-    version: master
-    depth: 1
-    update: yes
-
-
-- name: Install fzf
-  command: >
-    /home/{{ ansible_user_id }}/.fzf/install --no-fish --key-bindings --completion
-  args:
-    creates: "/home/{{ ansible_user_id }}/.fzf/bin/fzf"
-  environment:
-    HOME: "/home/{{ ansible_user_id }}"
-    SHELL: "/usr/bin/zsh"
-
-- name: Ensure fzf bin dir is in PATH
-  lineinfile:
-    path: "/home/{{ ansible_user_id }}/.zshrc"
-    line: '[ -f ~/.fzf.zsh ] && source ~/.fzf.zsh'
-    state: present
-    create: yes
-    owner: "{{ ansible_user_id }}"
-    group: "{{ ansible_user_id }}"
-    mode: "0644"
-
-- name: Deploy .plugins.toml for sheldon
-  template:
-    src: plugins.toml.j2
-    dest: "/home/{{ ansible_user_id }}/.config/sheldon/plugins.toml"
-    owner: "{{ ansible_user_id }}"
-    group: "{{ ansible_user_id }}"
-    mode: "0644"
-  become: false
-
-- name: Ensure zsh is installed
-  package:
-    name: zsh
+      - git
+      - zoxide
+      - direnv
+      - wl-clipboard
     state: present
   become: true
+  when: ansible_system == 'Linux'
+
+- name: Install zsh environment packages (macOS)
+  ansible.builtin.include_tasks:
+    file: mac.yml
+  when: ansible_system == 'Darwin'
+
+- name: Ensure ~/.local/bin exists
+  ansible.builtin.file:
+    path: "{{ zsh_user_home }}/.local/bin"
+    state: directory
+    owner: "{{ zsh_user }}"
+    mode: "0755"
+
+- name: Ensure ~/.local/share exists
+  ansible.builtin.file:
+    path: "{{ zsh_user_home }}/.local/share"
+    state: directory
+    owner: "{{ zsh_user }}"
+    mode: "0755"
+
+- name: Clone fzf repository (versioned)
+  ansible.builtin.git:
+    repo: https://github.com/junegunn/fzf.git
+    dest: "{{ zsh_user_home }}/.local/share/fzf"
+    version: "{{ fzf_version }}"
+    depth: 1
+    update: true
+  become: true
+  become_user: "{{ zsh_user }}"
+  register: fzf_clone
+
+- name: Check for fzf binary
+  ansible.builtin.stat:
+    path: "{{ zsh_user_home }}/.local/share/fzf/bin/fzf"
+  register: fzf_bin
+
+- name: Install fzf binary when updated or missing
+  ansible.builtin.command: ./install --bin
+  args:
+    chdir: "{{ zsh_user_home }}/.local/share/fzf"
+  become: true
+  become_user: "{{ zsh_user }}"
+  when: fzf_clone.changed or not fzf_bin.stat.exists
+
+- name: Link fzf into ~/.local/bin
+  ansible.builtin.file:
+    src: "{{ zsh_user_home }}/.local/share/fzf/bin/fzf"
+    dest: "{{ zsh_user_home }}/.local/bin/fzf"
+    state: link
+    owner: "{{ zsh_user }}"
+    force: true
+
+- name: Check existing .zshrc for legacy whole-file management
+  ansible.builtin.stat:
+    path: "{{ zsh_user_home }}/.zshrc"
+    checksum_algorithm: sha1
+  register: zshrc_existing
+
+- name: Migrate unmodified legacy managed .zshrc
+  ansible.builtin.copy:
+    content: ""
+    dest: "{{ zsh_user_home }}/.zshrc"
+    owner: "{{ zsh_user }}"
+    mode: "0644"
+    backup: true
+  when:
+    - zshrc_existing.stat.exists
+    - >-
+      (zshrc_existing.stat.checksum | default(''))
+      in zsh_legacy_managed_checksums
+
+- name: Ensure managed zsh config directory exists
+  ansible.builtin.file:
+    path: "{{ zsh_user_home }}/.config/zsh"
+    state: directory
+    owner: "{{ zsh_user }}"
+    mode: "0755"
+
+- name: Deploy Ansible-managed zsh configuration
+  ansible.builtin.template:
+    src: .zshrc.j2
+    dest: "{{ zsh_user_home }}/.config/zsh/ansible.zsh"
+    owner: "{{ zsh_user }}"
+    mode: "0644"
+
+- name: Load Ansible-managed configuration from .zshrc
+  ansible.builtin.blockinfile:
+    path: "{{ zsh_user_home }}/.zshrc"
+    marker: "# {mark} ANSIBLE MANAGED ZSH"
+    insertbefore: BOF
+    create: true
+    backup: true
+    owner: "{{ zsh_user }}"
+    mode: "0644"
+    block: |
+      if [ -r "$HOME/.config/zsh/ansible.zsh" ]; then
+        source "$HOME/.config/zsh/ansible.zsh"
+      fi
+
+- name: Ensure zsh init.d directory exists
+  ansible.builtin.file:
+    path: "{{ zsh_user_home }}/.local/share/zsh/init.d"
+    state: directory
+    owner: "{{ zsh_user }}"
+    mode: "0755"
+
+- name: Check installed sheldon version
+  ansible.builtin.command:
+    argv:
+      - "{{ zsh_user_home }}/.local/bin/sheldon"
+      - --version
+  register: sheldon_version_check
+  changed_when: false
+  failed_when: false
+  when: ansible_system == 'Linux'
+
+- name: Download pinned sheldon install script
+  ansible.builtin.get_url:
+    url: >-
+      https://raw.githubusercontent.com/rossmacarthur/install/
+      {{- sheldon_installer_commit -}}/crate.sh
+    dest: /tmp/sheldon_install.sh
+    mode: "0700"
+    checksum: "{{ sheldon_installer_checksum }}"
+  when:
+    - ansible_system == 'Linux'
+    - sheldon_version not in (sheldon_version_check.stdout | default(''))
+
+- name: Install pinned sheldon version
+  ansible.builtin.command:
+    argv:
+      - /tmp/sheldon_install.sh
+      - --repo
+      - rossmacarthur/sheldon
+      - --tag
+      - "{{ sheldon_version }}"
+      - --to
+      - "{{ zsh_user_home }}/.local/bin"
+      - --force
+  become: true
+  become_user: "{{ zsh_user }}"
+  when:
+    - ansible_system == 'Linux'
+    - sheldon_version not in (sheldon_version_check.stdout | default(''))
+
+- name: Ensure sheldon config dir exists
+  ansible.builtin.file:
+    path: "{{ zsh_user_home }}/.config/sheldon"
+    state: directory
+    owner: "{{ zsh_user }}"
+    mode: "0700"
+
+- name: Deploy plugins.toml for sheldon
+  ansible.builtin.template:
+    src: plugins.toml.j2
+    dest: "{{ zsh_user_home }}/.config/sheldon/plugins.toml"
+    owner: "{{ zsh_user }}"
+    mode: "0644"
+
+- name: Find zsh binary
+  ansible.builtin.command: which zsh
+  register: zsh_path
+  changed_when: false
+  failed_when: false
 
 - name: Change default shell to zsh for current user
-  user:
-    name: "{{ ansible_user_id }}"
-    shell: /bin/zsh
+  ansible.builtin.user:
+    name: "{{ zsh_user }}"
+    shell: "{{ zsh_path.stdout | default('/usr/bin/zsh', true) }}"
   become: true

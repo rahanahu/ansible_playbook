@@ -1,0 +1,52 @@
+---
+- name: Configure Fedora 44 KDE workstation baseline
+  hosts: localhost
+  connection: local
+  gather_facts: true
+
+  vars:
+    # Snapper changes the Btrfs subvolume configuration, so it is opt-in.
+    fedora44_enable_snapper: false
+
+  roles:
+    - role: fedora44_preflight
+      tags:
+        - always
+        - preflight
+
+    - role: fedora44_graphics
+      tags:
+        - graphics
+
+    - role: docker
+      tags:
+        - development
+        - docker
+
+    - role: uv
+      tags:
+        - development
+        - uv
+
+    - role: zsh
+      tags:
+        - development
+        - zsh
+
+    - role: nvm
+      tags:
+        - development
+        - nvm
+
+    - role: fedora44_snapper
+      when: fedora44_enable_snapper | bool
+      tags:
+        - snapper
+
+    - role: fedora44_gaming
+      tags:
+        - gaming
+
+    - role: fedora44_input
+      tags:
+        - input

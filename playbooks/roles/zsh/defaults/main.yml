@@ -1,0 +1,13 @@
+---
+# Role defaults for zsh role
+fzf_enable_completion: true
+fzf_version: "v0.74.3"
+sheldon_version: "0.8.5"
+sheldon_installer_commit: "d8c82abdf1cdd67e3a0f494f497e0876f97506f7"
+sheldon_installer_checksum: "sha256:9ff2b3ee918dd345807aece8abf2231fab4f1d827867c4e933d1da1a4924cc9d"
+
+# Rendered checksums from the former whole-file .zshrc template. These allow
+# unmodified legacy files to be migrated without deleting user customizations.
+zsh_legacy_managed_checksums:
+  - "33a634cfc53b1d501944549dd4e85137865d21ff"
+  - "0d7354b0cd7610e3a8a9be24cd7f71b35670b42e"

@@ -1,14 +1,15 @@
-# .zshrc
+# Ansible-managed zsh configuration
 # License : MIT
 # http://mollifier.mit-license.org/
-########################################
-# zcompile 自動実行設定
-if [ ! -f ~/.zshrc.zwc -o ~/.zshrc -nt ~/.zshrc.zwc ]; then
-   zcompile ~/.zshrc
-fi
 
-# 環境変数
-export LANG=ja_JP.UTF-8
+{% if ansible_system == 'Darwin' %}
+# Add Homebrew packages to PATH on both Apple Silicon and Intel macOS.
+if [ -x /opt/homebrew/bin/brew ]; then
+    eval "$(/opt/homebrew/bin/brew shellenv)"
+elif [ -x /usr/local/bin/brew ]; then
+    eval "$(/usr/local/bin/brew shellenv)"
+fi
+{% endif %}
 
 # 色を使用出来るようにする
 autoload -Uz colors
@@ -151,8 +152,11 @@ alias -g G='| grep'
 if which pbcopy >/dev/null 2>&1 ; then
     # Mac
     alias -g C='| pbcopy'
+elif which wl-copy >/dev/null 2>&1 ; then
+    # Wayland (wl-clipboard)
+    alias -g C='| wl-copy'
 elif which xsel >/dev/null 2>&1 ; then
-    # Linux
+    # X11
     alias -g C='| xsel --input --clipboard'
 elif which putclip >/dev/null 2>&1 ; then
     # Cygwin
@@ -161,6 +165,48 @@ fi
 
 
 export PATH="$HOME/.local/bin:$PATH"
+
+# zoxide initialization (if installed via package manager)
+if command -v zoxide >/dev/null 2>&1 ; then
+    eval "$(zoxide init zsh)"
+fi
+
+# fzf initialization: use Git-installed fzf in $HOME/.local/share/fzf
+FZF_HOME="$HOME/.local/share/fzf"
+if [ -d "$FZF_HOME" ]; then
+    # key bindings
+    if [ -f "$FZF_HOME/shell/key-bindings.zsh" ]; then
+        source "$FZF_HOME/shell/key-bindings.zsh"
+        # remove Alt-C binding to avoid conflict with zoxide
+        bindkey -r '\ec'
+    fi
+
+    # optional: completion
+    {% if fzf_enable_completion | default(true) %}
+    if [ -f "$FZF_HOME/shell/completion.zsh" ]; then
+        source "$FZF_HOME/shell/completion.zsh"
+    fi
+    {% endif %}
+fi
+
+# direnv hook
+if command -v direnv >/dev/null 2>&1; then
+    eval "$(direnv hook zsh)"
+fi
+
+# Source role-provided init.d snippets
+if [ -d "$HOME/.local/share/zsh/init.d" ]; then
+    for __zsh_snippet in "$HOME/.local/share/zsh/init.d"/*.sh(N); do
+        if [ -f "$__zsh_snippet" ] && [ -r "$__zsh_snippet" ]; then
+            source "$__zsh_snippet"
+        fi
+    done
+fi
+
+# Load sheldon-managed plugins (if sheldon installed)
+if command -v sheldon >/dev/null 2>&1 ; then
+    eval "$(sheldon source)"
+fi
 
 ########################################
 # OS 別の設定
@@ -176,4 +222,3 @@ case ${OSTYPE} in
         ;;
 esac
 #########################################
-
