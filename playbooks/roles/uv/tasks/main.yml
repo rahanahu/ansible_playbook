@@ -19,7 +19,66 @@
     HOME: "{{ target_home }}"
   register: uv_check
   changed_when: false
+  check_mode: false
   failed_when: false
+  tags:
+    - user
+
+- name: Look up the latest uv release
+  ansible.builtin.uri:
+    url: https://api.github.com/repos/astral-sh/uv/releases/latest
+    return_content: true
+  register: uv_release_lookup
+  changed_when: false
+  check_mode: false
+  failed_when: false
+  when: uv_version is not defined
+  tags:
+    - user
+
+- name: Resolve the effective uv version
+  ansible.builtin.set_fact:
+    uv_version_effective: >-
+      {{ uv_version
+         | default(uv_release_lookup.json.tag_name
+                    if ((uv_release_lookup.status | default(0)) == 200 and
+                        not (uv_release_lookup.json.prerelease | default(true)))
+                    else '') }}
+  changed_when: false
+  tags:
+    - user
+
+- name: Fail when the uv release cannot be resolved and uv is not installed
+  ansible.builtin.assert:
+    that:
+      - uv_version_effective | length > 0 or uv_check.rc == 0
+    fail_msg: >-
+      Could not resolve the latest uv release from the GitHub API, and no
+      working uv installation was found at {{ target_home }}/.local/bin/uv.
+      Restore network access to the GitHub API or pin uv_version explicitly
+      to continue.
+  tags:
+    - user
+
+- name: Warn that the installed uv version is being kept
+  ansible.builtin.debug:
+    msg: >-
+      Could not resolve the latest uv release from the GitHub API. Keeping
+      the currently installed uv version at {{ target_home }}/.local/bin/uv
+      unchanged. Set uv_version explicitly to pin a version and avoid this
+      lookup.
+  when:
+    - uv_version_effective | length == 0
+    - uv_check.rc == 0
+  tags:
+    - user
+
+- name: Check for the target user's Ansible cache directory
+  ansible.builtin.stat:
+    path: "{{ target_home }}/.cache/ansible"
+  become: "{{ ansible_facts['user_id'] != target_user }}"
+  become_user: "{{ target_user }}"
+  register: uv_cache_dir_stat
   tags:
     - user
 
@@ -30,7 +89,9 @@
     mode: "0700"
   become: "{{ ansible_facts['user_id'] != target_user }}"
   become_user: "{{ target_user }}"
-  when: uv_check.rc != 0
+  when:
+    - uv_version_effective | length > 0
+    - uv_version_effective not in (uv_check.stdout | default(''))
   tags:
     - user
 
@@ -41,7 +102,10 @@
     mode: "0700"
   become: "{{ ansible_facts['user_id'] != target_user }}"
   become_user: "{{ target_user }}"
-  when: uv_check.rc != 0
+  when:
+    - uv_version_effective | length > 0
+    - uv_version_effective not in (uv_check.stdout | default(''))
+    - not (ansible_check_mode and not uv_cache_dir_stat.stat.exists)
   tags:
     - user
 
@@ -53,6 +117,8 @@
   become_user: "{{ target_user }}"
   environment:
     HOME: "{{ target_home }}"
-  when: uv_check.rc != 0
+  when:
+    - uv_version_effective | length > 0
+    - uv_version_effective not in (uv_check.stdout | default(''))
   tags:
     - user
