@@ -10,17 +10,17 @@
     target_user_allow_root: true
 
   pre_tasks:
-    - name: Validate the Fedora LXC guest
-      ansible.builtin.import_role:
-        name: fedora44_lxc_preflight
-      tags:
-        - always
-        - preflight
-
     - name: Validate the Fedora release
       ansible.builtin.import_role:
         name: fedora44_preflight
         tasks_from: release
+      tags:
+        - always
+        - preflight
+
+    - name: Validate the Fedora LXC guest
+      ansible.builtin.import_role:
+        name: fedora44_lxc_preflight
       tags:
         - always
         - preflight

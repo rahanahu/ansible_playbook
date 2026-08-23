@@ -1,4 +1,10 @@
 ---
+- name: Validate the Fedora release
+  ansible.builtin.import_tasks: release.yml
+  tags:
+    - always
+    - preflight
+
 - name: Reject containers from the workstation system baseline
   ansible.builtin.assert:
     that:
@@ -18,12 +24,6 @@
       {% else %}
       No workstation baseline is provided for this container type.
       {% endif %}
-  tags:
-    - always
-    - preflight
-
-- name: Validate the Fedora release
-  ansible.builtin.import_tasks: release.yml
   tags:
     - always
     - preflight

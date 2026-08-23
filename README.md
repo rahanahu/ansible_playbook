@@ -102,6 +102,20 @@ not install missing system packages.
 
 ## Fedora 44 KDE workstation
 
+Fedora 44 is the currently validated release and the minimum supported release.
+Newer Fedora releases continue with an explicit unvalidated-release warning;
+package or configuration failures are not ignored. Use
+`-e fedora_strict_release_check=true` to require a release listed as validated.
+
+A release can also be marked known-blocked, which is different from being
+merely unvalidated: it means the generic Fedora baseline has actually been
+found unsafe or non-functional on that release, and the run fails immediately
+regardless of strict mode. Use `-e '{"fedora_blocked_releases": [45]}'`
+(default empty) to reject a specific known-blocked release; the JSON form is
+required because a plain `key=[45]` argument is parsed as a string, not a
+list. The variable can equally be set in inventory or `group_vars`, which is
+often the more natural place for a policy list.
+
 The Fedora workstation wrapper combines machine-wide `system` tasks,
 per-account `user` tasks, root zsh, and conditional graphical `session` checks. It installs the
 common Mesa baseline, detected AMD support, RPM Fusion, desktop essentials, CLI diagnostics,
