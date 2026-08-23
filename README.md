@@ -385,8 +385,11 @@ is:
 <root>/usr/lib/swift_static/
 ```
 
-A wrong path does not error; the role silently keeps using the system Swift
-and links dynamically. Confirm the toolchain actually took effect with:
+A wrong path fails fast, before any build work happens: the role checks that
+`<path>/usr/bin/swiftc` exists and is executable and stops with an actionable
+message naming the path it checked if it does not. Leaving
+`hazkey_swift_toolchain_path` empty selects the system Swift instead. Confirm
+a valid toolchain actually links statically with:
 
 ```bash
 ansible-playbook playbooks/hazkey.yml -i localhost, -c local --check -v \
@@ -395,9 +398,9 @@ ansible-playbook playbooks/hazkey.yml -i localhost, -c local --check -v \
 ```
 
 `STATIC_STDLIB=ON` means the toolchain was picked up and `hazkey-server`
-will be linked statically. `STATIC_STDLIB=OFF` means the system Swift is
-still being used, so the path is wrong or the toolchain has no static
-standard library. Changing the toolchain path changes the build signature,
+will be linked statically. `STATIC_STDLIB=OFF` on a valid explicit toolchain
+means that toolchain has no static standard library, so linking falls back
+to dynamic. Changing the toolchain path changes the build signature,
 so the next run rebuilds once; that is expected.
 
 `hazkey_static_swift_stdlib` overrides the auto-detection and is rarely
