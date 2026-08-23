@@ -1,0 +1,5 @@
+---
+# Deprecated compatibility entrypoint.
+# Use playbooks/fedora_lxc.yml instead.
+- name: Import the Fedora LXC entrypoint
+  ansible.builtin.import_playbook: fedora_lxc.yml

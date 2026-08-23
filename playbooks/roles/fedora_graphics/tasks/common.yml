@@ -1,0 +1,21 @@
+---
+- name: Install common graphics userspace and diagnostic packages
+  ansible.builtin.dnf:
+    name:
+      - pciutils
+      - vulkan-tools
+      - glx-utils
+      - mesa-vulkan-drivers
+      - mesa-vulkan-drivers.i686
+      - mesa-dri-drivers.i686
+    state: present
+  become: true
+
+- name: Read the installed Mesa Vulkan version
+  ansible.builtin.command:
+    argv:
+      - rpm
+      - -q
+      - mesa-vulkan-drivers
+  register: fedora_mesa_vulkan_version
+  changed_when: false

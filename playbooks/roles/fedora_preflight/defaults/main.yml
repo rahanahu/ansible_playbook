@@ -1,0 +1,16 @@
+---
+fedora_release_default_minimum: 44
+fedora_release_default_validated:
+  - 44
+fedora_release_default_strict: false
+fedora_release_default_blocked: []
+
+fedora_require_kde_wayland: true
+fedora_require_security_baseline: true
+fedora_container_virtualization_types:
+  - container
+  - containerd
+  - docker
+  - lxc
+  - openvz
+  - podman

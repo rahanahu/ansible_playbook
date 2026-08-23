@@ -1,0 +1,377 @@
+---
+- name: Require Fedora for Hazkey package dependencies
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['distribution'] == 'Fedora'
+      - target_user is defined
+      - target_home is defined
+      - target_user != 'root'
+      - >-
+        hazkey_allow_other_fedora_release | bool or
+        ansible_facts['distribution_major_version'] == hazkey_required_fedora_release
+    fail_msg: >-
+      The Hazkey role currently supports Fedora {{
+      hazkey_required_fedora_release }} and requires an explicit non-root
+      workstation target.
+  tags:
+    - system
+    - user
+
+- name: Install Hazkey build dependencies
+  ansible.builtin.dnf:
+    name:
+      - git
+      - cmake
+      - ninja-build
+      - gcc
+      - gcc-c++
+      - clang
+      - gettext
+      - swift-lang
+      - swift-lang-runtime
+      - fcitx5-devel
+      - qt6-qtbase-devel
+      - qt6-qttools-devel
+      - protobuf-devel
+      - protobuf-lite-devel
+      - protobuf-compiler
+    state: present
+  become: true
+  tags:
+    - system
+
+- name: Install Hazkey Vulkan build dependencies
+  ansible.builtin.dnf:
+    name:
+      - vulkan-headers
+      - vulkan-loader-devel
+      - spirv-headers-devel
+      - glslc
+      - vulkan-tools
+    state: present
+  become: true
+  when: hazkey_enable_vulkan | bool
+  tags:
+    - system
+
+- name: Create the source directory
+  ansible.builtin.file:
+    path: "{{ hazkey_source_root }}"
+    state: directory
+    owner: "{{ target_user }}"
+    mode: "0755"
+  become: "{{ ansible_facts['user_id'] != target_user }}"
+  become_user: "{{ target_user }}"
+  tags:
+    - user
+
+- name: Check out Hazkey with submodules
+  ansible.builtin.git:
+    repo: "{{ hazkey_repository }}"
+    dest: "{{ hazkey_source_directory }}"
+    version: >-
+      {{ hazkey_development_branch if hazkey_update_repository | bool
+         else hazkey_version }}
+    recursive: true
+    update: true
+  become: "{{ ansible_facts['user_id'] != target_user }}"
+  become_user: "{{ target_user }}"
+  environment:
+    HOME: "{{ target_home }}"
+  tags:
+    - user
+
+- name: Check the Vulkan baseline before a Vulkan build
+  ansible.builtin.command:
+    argv:
+      - vulkaninfo
+      - --summary
+  register: hazkey_vulkaninfo
+  changed_when: false
+  check_mode: false
+  failed_when: false
+  when: hazkey_enable_vulkan | bool
+  tags:
+    - system
+
+- name: Require a hardware Vulkan device for Hazkey
+  ansible.builtin.assert:
+    that:
+      - hazkey_vulkaninfo.rc == 0
+      - "'llvmpipe' not in (hazkey_vulkaninfo.stdout | lower)"
+    fail_msg: >-
+      Hazkey Vulkan was requested, but vulkaninfo did not report a working
+      hardware Vulkan device.
+  when: hazkey_enable_vulkan | bool
+  tags:
+    - system
+
+- name: Read the checked-out Hazkey commit
+  ansible.builtin.command:
+    argv:
+      - git
+      - rev-parse
+      - HEAD
+  args:
+    chdir: "{{ hazkey_source_directory }}"
+  become: "{{ ansible_facts['user_id'] != target_user }}"
+  become_user: "{{ target_user }}"
+  environment:
+    HOME: "{{ target_home }}"
+  register: hazkey_head
+  changed_when: false
+  check_mode: false
+  tags:
+    - user
+
+- name: Record the installed Hazkey source commit
+  ansible.builtin.copy:
+    dest: "{{ hazkey_commit_record_file }}"
+    content: "{{ hazkey_head.stdout | trim }}\n"
+    owner: "{{ target_user }}"
+    mode: "0644"
+  become: "{{ ansible_facts['user_id'] != target_user }}"
+  become_user: "{{ target_user }}"
+  tags:
+    - user
+
+- name: Check the explicit Swift toolchain path
+  ansible.builtin.stat:
+    path: "{{ hazkey_swift_toolchain_path }}/usr/bin/swiftc"
+  register: hazkey_swift_toolchain_stat
+  changed_when: false
+  check_mode: false
+  when: hazkey_swift_toolchain_path != ""
+  tags:
+    - user
+
+- name: Require a valid explicit Swift toolchain path
+  ansible.builtin.assert:
+    that:
+      - hazkey_swift_toolchain_stat.stat.exists
+      - hazkey_swift_toolchain_stat.stat.executable
+    fail_msg: >-
+      hazkey_swift_toolchain_path is set to
+      {{ hazkey_swift_toolchain_path }}, but
+      {{ hazkey_swift_toolchain_path }}/usr/bin/swiftc does not exist or is
+      not executable. Fix the path, or leave hazkey_swift_toolchain_path
+      empty to use the system Swift.
+  when: hazkey_swift_toolchain_path != ""
+  tags:
+    - user
+
+- name: Detect the Swift toolchain target info
+  ansible.builtin.command:
+    argv:
+      - swiftc
+      - -print-target-info
+  environment:
+    PATH: >-
+      {{ (hazkey_swift_toolchain_path ~ '/usr/bin:' ~ ansible_facts['env']['PATH'])
+         if hazkey_swift_toolchain_path else ansible_facts['env']['PATH'] }}
+  register: hazkey_swift_target_info
+  changed_when: false
+  check_mode: false
+  tags:
+    - user
+
+- name: Check for a static Swift standard library
+  ansible.builtin.stat:
+    path: >-
+      {{ (hazkey_swift_target_info.stdout | from_json).paths.runtimeResourcePath
+         | dirname }}/swift_static/linux/static-stdlib-args.lnk
+  register: hazkey_static_stdlib_stat
+  tags:
+    - user
+
+- name: Resolve the effective Hazkey static Swift stdlib setting
+  ansible.builtin.set_fact:
+    hazkey_static_swift_stdlib_effective: >-
+      {{ hazkey_static_swift_stdlib
+         | default(hazkey_static_stdlib_stat.stat.exists)
+         | bool }}
+  changed_when: false
+  tags:
+    - user
+
+- name: Report dynamic Swift linking fallback
+  ansible.builtin.debug:
+    msg: |-
+      The Swift toolchain provides no static standard library, so
+      hazkey-server is linked dynamically.
+
+      This requires swift-lang-runtime to remain installed. Swift on Linux
+      has no ABI stability guarantee (the runtime libraries carry
+      unversioned SONAMEs such as libswiftCore.so), so a Swift runtime
+      update requires a rebuild, which this role detects automatically via
+      the build signature.
+
+      Set hazkey_static_swift_stdlib: true to force static linking once the
+      toolchain provides it.
+  when: not hazkey_static_swift_stdlib_effective | bool
+  tags:
+    - user
+
+- name: Select the Hazkey build configuration
+  ansible.builtin.set_fact:
+    hazkey_vulkan_setting: "{{ 'ON' if hazkey_enable_vulkan | bool else 'OFF' }}"
+    hazkey_build_directory: >-
+      {{ hazkey_source_directory }}/build-{{
+      'vulkan' if hazkey_enable_vulkan | bool else 'cpu' }}
+  changed_when: false
+  tags:
+    - user
+
+- name: Query the installed Swift runtime package version
+  ansible.builtin.command:
+    argv:
+      - rpm
+      - -q
+      - --qf
+      - "%{version}-%{release}"
+      - swift-lang-runtime
+  register: hazkey_swift_runtime_version
+  changed_when: false
+  check_mode: false
+  failed_when: false
+  tags:
+    - user
+
+- name: Define the Hazkey build signature
+  ansible.builtin.set_fact:
+    hazkey_build_signature: >-
+      {{ hazkey_head.stdout | trim }}|GGML_VULKAN={{
+      hazkey_vulkan_setting }}|PREFIX={{ hazkey_install_prefix
+      }}|SWIFT={{ (hazkey_swift_target_info.stdout | from_json).compilerVersion
+      }}|SWIFT_RUNTIME={{ hazkey_swift_runtime_version.stdout | trim
+      if hazkey_swift_runtime_version.rc == 0 else 'none'
+      }}|STATIC_STDLIB={{ 'ON' if hazkey_static_swift_stdlib_effective | bool
+      else 'OFF' }}
+    hazkey_build_stamp: "{{ hazkey_build_directory }}/.ansible-installed"
+  changed_when: false
+  tags:
+    - user
+
+- name: Check the Hazkey build stamp
+  ansible.builtin.stat:
+    path: "{{ hazkey_build_stamp }}"
+  become: "{{ ansible_facts['user_id'] != target_user }}"
+  become_user: "{{ target_user }}"
+  register: hazkey_build_stamp_stat
+  tags:
+    - user
+
+- name: Read the Hazkey build stamp
+  ansible.builtin.slurp:
+    src: "{{ hazkey_build_stamp }}"
+  register: hazkey_build_stamp_content
+  become: "{{ ansible_facts['user_id'] != target_user }}"
+  become_user: "{{ target_user }}"
+  when: hazkey_build_stamp_stat.stat.exists
+  tags:
+    - user
+
+- name: Decide whether Hazkey must be rebuilt
+  ansible.builtin.set_fact:
+    hazkey_rebuild_required: >-
+      {{ hazkey_force_rebuild | bool or
+         not hazkey_build_stamp_stat.stat.exists or
+         ((hazkey_build_stamp_content.content | default('') | b64decode | trim)
+          != hazkey_build_signature) }}
+  changed_when: false
+  tags:
+    - user
+
+- name: Configure Hazkey
+  ansible.builtin.command:
+    argv:
+      - cmake
+      - -S
+      - "{{ hazkey_source_directory }}"
+      - -B
+      - "{{ hazkey_build_directory }}"
+      - -G
+      - Ninja
+      - -DCMAKE_BUILD_TYPE=Release
+      - "-DCMAKE_INSTALL_PREFIX={{ hazkey_install_prefix }}"
+      - "-DGGML_VULKAN={{ hazkey_vulkan_setting }}"
+      - "-DHAZKEY_SERVER_STATIC_SWIFT_STDLIB={{ hazkey_static_swift_stdlib_effective | ternary('ON', 'OFF') }}"
+  become: "{{ ansible_facts['user_id'] != target_user }}"
+  become_user: "{{ target_user }}"
+  environment:
+    HOME: "{{ target_home }}"
+    PATH: >-
+      {{ (hazkey_swift_toolchain_path ~ '/usr/bin:' ~ ansible_facts['env']['PATH'])
+         if hazkey_swift_toolchain_path else ansible_facts['env']['PATH'] }}
+  changed_when: true
+  when: hazkey_rebuild_required | bool
+  tags:
+    - user
+
+- name: Build Hazkey
+  ansible.builtin.command:
+    argv:
+      - cmake
+      - --build
+      - "{{ hazkey_build_directory }}"
+      - --parallel
+  become: "{{ ansible_facts['user_id'] != target_user }}"
+  become_user: "{{ target_user }}"
+  environment:
+    HOME: "{{ target_home }}"
+    PATH: >-
+      {{ (hazkey_swift_toolchain_path ~ '/usr/bin:' ~ ansible_facts['env']['PATH'])
+         if hazkey_swift_toolchain_path else ansible_facts['env']['PATH'] }}
+  changed_when: true
+  when: hazkey_rebuild_required | bool
+  tags:
+    - user
+
+- name: Reject a container install of the Hazkey fcitx5 addon
+  ansible.builtin.assert:
+    that:
+      - >-
+        hazkey_allow_container_install | bool or
+        ansible_facts['virtualization_role'] != 'guest' or
+        ansible_facts['virtualization_type'] not in
+        hazkey_container_virtualization_types
+    fail_msg: |-
+      Detected a container guest (type={{ ansible_facts['virtualization_type'] }},
+      role={{ ansible_facts['virtualization_role'] }}).
+
+      Installing the Hazkey fcitx5 addon into a container's /usr would land in
+      the container's filesystem, which the host's fcitx5 does not read.
+
+      Building Hazkey inside a container is supported: the build tree lives
+      under {{ target_home }}, which toolbox shares with the host. Only the
+      install step must run on the host.
+
+      Set hazkey_allow_container_install=true if installing inside this
+      container is genuinely intended.
+  when: hazkey_rebuild_required | bool
+  tags:
+    - system
+
+- name: Install Hazkey
+  ansible.builtin.command:
+    argv:
+      - cmake
+      - --install
+      - "{{ hazkey_build_directory }}"
+  become: true
+  changed_when: true
+  when: hazkey_rebuild_required | bool
+  tags:
+    - system
+
+- name: Record the successful Hazkey build
+  ansible.builtin.copy:
+    dest: "{{ hazkey_build_stamp }}"
+    content: "{{ hazkey_build_signature }}\n"
+    owner: "{{ target_user }}"
+    mode: "0644"
+  become: "{{ ansible_facts['user_id'] != target_user }}"
+  become_user: "{{ target_user }}"
+  when: hazkey_rebuild_required | bool
+  tags:
+    - user

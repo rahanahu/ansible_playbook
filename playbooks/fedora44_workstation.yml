@@ -1,0 +1,5 @@
+---
+# Deprecated compatibility entrypoint.
+# Use playbooks/fedora_workstation.yml instead.
+- name: Import the Fedora workstation entrypoint
+  ansible.builtin.import_playbook: fedora_workstation.yml

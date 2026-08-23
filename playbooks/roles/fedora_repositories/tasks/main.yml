@@ -1,0 +1,37 @@
+---
+- name: Import RPM Fusion Free GPG key
+  ansible.builtin.rpm_key:
+    state: present
+    key: >-
+      https://download1.rpmfusion.org/free/fedora/RPM-GPG-KEY-rpmfusion-free-fedora-2020
+    fingerprint: E9A4 91A3 DE24 7814 E7E0 67EA E06F 8ECD D651 FF2E
+  become: true
+  tags:
+    - system
+    - repositories
+
+- name: Import RPM Fusion Nonfree GPG key
+  ansible.builtin.rpm_key:
+    state: present
+    key: >-
+      https://download1.rpmfusion.org/nonfree/fedora/RPM-GPG-KEY-rpmfusion-nonfree-fedora-2020
+    fingerprint: 79BD B88F 9BBF 7391 0FD4 095B 6A2A F961 9484 3C65
+  become: true
+  tags:
+    - system
+    - repositories
+
+- name: Install RPM Fusion Free and Nonfree release packages
+  ansible.builtin.dnf:
+    name:
+      - >-
+        https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-{{
+        ansible_facts['distribution_major_version'] }}.noarch.rpm
+      - >-
+        https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-{{
+        ansible_facts['distribution_major_version'] }}.noarch.rpm
+    state: present
+  become: true
+  tags:
+    - system
+    - repositories

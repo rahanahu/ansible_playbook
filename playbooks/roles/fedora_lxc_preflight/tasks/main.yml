@@ -1,0 +1,58 @@
+---
+- name: Require an LXC guest
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['virtualization_type'] == 'lxc'
+      - ansible_facts['virtualization_role'] == 'guest'
+    fail_msg: |-
+      fedora_lxc.yml is intended for an LXC guest.
+
+      Detected virtualization:
+        type: {{ ansible_facts['virtualization_type'] }}
+        role: {{ ansible_facts['virtualization_role'] }}
+
+      Use playbooks/fedora_workstation.yml for a desktop, or
+      playbooks/fedora_system.yml for workstation system recovery.
+  tags:
+    - always
+    - preflight
+
+- name: Require systemd as the LXC service manager
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['service_mgr'] == 'systemd'
+    fail_msg: >-
+      This LXC baseline expects systemd; Ansible detected
+      service_mgr={{ ansible_facts['service_mgr'] }}.
+  when: fedora_lxc_require_systemd | bool
+  tags:
+    - always
+    - preflight
+
+- name: Read the LXC systemd state
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - is-system-running
+  register: fedora_lxc_systemd_state
+  changed_when: false
+  failed_when: false
+  when: fedora_lxc_require_systemd | bool
+  tags:
+    - always
+    - preflight
+
+- name: Require a usable LXC systemd state
+  ansible.builtin.assert:
+    that:
+      - >-
+        (fedora_lxc_systemd_state.stdout | trim) in
+        fedora_lxc_usable_systemd_states
+    fail_msg: >-
+      The LXC systemd state is
+      {{ fedora_lxc_systemd_state.stdout | default('unknown') | trim }}.
+      Expected one of {{ fedora_lxc_usable_systemd_states | join(', ') }}.
+  when: fedora_lxc_require_systemd | bool
+  tags:
+    - always
+    - preflight

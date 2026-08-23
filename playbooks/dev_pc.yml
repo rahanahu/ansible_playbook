@@ -1,8 +1,17 @@
-- hosts: localhost
+---
+- name: Provision a development workstation
+  hosts: localhost
   connection: local
+  gather_facts: true
+  pre_tasks:
+    - name: Resolve the workstation target user
+      ansible.builtin.import_role:
+        name: target_user
+      tags:
+        - always
   roles:
-    - base
-    - docker
-    - uv
-    - zsh
-    - nvm
+    - role: docker
+      when: ansible_facts['system'] != 'Darwin'
+    - role: uv
+    - role: zsh
+    - role: nvm

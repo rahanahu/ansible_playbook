@@ -1,0 +1,176 @@
+---
+- name: Install Docker Engine on Debian-family systems
+  when: ansible_facts['os_family'] == 'Debian'
+  block:
+    - name: Remove conflicting Docker packages
+      ansible.builtin.apt:
+        name:
+          - docker.io
+          - docker-doc
+          - docker-compose
+          - docker-compose-v2
+          - podman-docker
+          - containerd
+          - runc
+        state: absent
+        purge: true
+      become: true
+
+    - name: Install Docker repository prerequisites
+      ansible.builtin.apt:
+        name:
+          - ca-certificates
+          - curl
+        state: present
+        update_cache: true
+      become: true
+
+    - name: Ensure apt keyring directory exists
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: "0755"
+      become: true
+
+    - name: Install Docker apt signing key
+      ansible.builtin.get_url:
+        url: >-
+          https://download.docker.com/linux/{{
+          'ubuntu' if ansible_facts['distribution'] == 'Ubuntu' else 'debian' }}/gpg
+        dest: /etc/apt/keyrings/docker.asc
+        mode: "0644"
+        force: true
+      become: true
+
+    - name: Add Docker apt repository
+      ansible.builtin.apt_repository:
+        repo: >-
+          deb [arch={{ 'arm64' if ansible_facts['architecture'] in ['aarch64', 'arm64']
+          else 'amd64' }} signed-by=/etc/apt/keyrings/docker.asc]
+          https://download.docker.com/linux/{{
+          'ubuntu' if ansible_facts['distribution'] == 'Ubuntu' else 'debian' }}
+          {{ ansible_facts['distribution_release'] }} stable
+        filename: docker
+        state: present
+      become: true
+
+    - name: Check for the Docker apt repository file
+      ansible.builtin.stat:
+        path: /etc/apt/sources.list.d/docker.list
+      become: true
+      register: docker_debian_repo_stat
+      changed_when: false
+      check_mode: false
+
+    - name: Install Docker Engine packages
+      ansible.builtin.apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present
+        update_cache: true
+      become: true
+      when: docker_debian_repo_stat.stat.exists or not ansible_check_mode
+
+    - name: Explain why Docker packages were skipped in check mode
+      ansible.builtin.debug:
+        msg: >-
+          Docker packages cannot be evaluated in check mode because the
+          Docker repository is not installed yet. A normal run adds the
+          repository before resolving the docker-ce packages.
+      when:
+        - ansible_check_mode
+        - not docker_debian_repo_stat.stat.exists
+
+- name: Install Docker Engine on Fedora
+  when: ansible_facts['distribution'] == 'Fedora'
+  block:
+    - name: Install Docker repository prerequisites
+      ansible.builtin.dnf:
+        name:
+          - ca-certificates
+          - curl
+        state: present
+      become: true
+
+    - name: Add Docker Fedora repository
+      ansible.builtin.get_url:
+        url: https://download.docker.com/linux/fedora/docker-ce.repo
+        dest: /etc/yum.repos.d/docker-ce.repo
+        mode: "0644"
+      become: true
+
+    - name: Check for the Docker Fedora repository file
+      ansible.builtin.stat:
+        path: /etc/yum.repos.d/docker-ce.repo
+      become: true
+      register: docker_fedora_repo_stat
+      changed_when: false
+      check_mode: false
+
+    - name: Install Docker Engine packages
+      ansible.builtin.dnf:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present
+      become: true
+      when: docker_fedora_repo_stat.stat.exists or not ansible_check_mode
+
+    - name: Explain why Docker packages were skipped in check mode
+      ansible.builtin.debug:
+        msg: >-
+          Docker packages cannot be evaluated in check mode because the
+          Docker repository is not installed yet. A normal run adds the
+          repository before resolving the docker-ce packages.
+      when:
+        - ansible_check_mode
+        - not docker_fedora_repo_stat.stat.exists
+
+- name: Ensure docker group exists
+  ansible.builtin.group:
+    name: docker
+    state: present
+  become: true
+  when: >-
+    ansible_facts['os_family'] == 'Debian' or
+    ansible_facts['distribution'] == 'Fedora'
+
+- name: Check for the Docker binary
+  ansible.builtin.stat:
+    path: /usr/bin/docker
+  become: true
+  register: docker_binary_stat
+  changed_when: false
+  check_mode: false
+
+- name: Ensure docker service is enabled and running
+  ansible.builtin.service:
+    name: docker
+    enabled: true
+    state: started
+  become: true
+  when: >-
+    (ansible_facts['os_family'] == 'Debian' or
+    ansible_facts['distribution'] == 'Fedora') and
+    (docker_binary_stat.stat.exists or not ansible_check_mode)
+
+- name: Explain why the Docker service was skipped in check mode
+  ansible.builtin.debug:
+    msg: >-
+      Docker service state cannot be evaluated in check mode because the
+      Docker packages are not installed yet on this host, so the docker
+      systemd unit does not exist. A normal run installs the packages
+      before enabling and starting the service.
+  when:
+    - ansible_check_mode
+    - not docker_binary_stat.stat.exists
+    - >-
+      ansible_facts['os_family'] == 'Debian' or
+      ansible_facts['distribution'] == 'Fedora'

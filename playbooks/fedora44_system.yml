@@ -1,0 +1,5 @@
+---
+# Deprecated compatibility entrypoint.
+# Use playbooks/fedora_system.yml instead.
+- name: Import the Fedora system entrypoint
+  ansible.builtin.import_playbook: fedora_system.yml

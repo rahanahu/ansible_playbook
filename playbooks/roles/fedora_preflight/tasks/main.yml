@@ -1,0 +1,18 @@
+---
+- name: Run Fedora system preflight checks
+  ansible.builtin.include_tasks:
+    file: system.yml
+    apply:
+      tags:
+        - system
+  tags:
+    - system
+
+- name: Run Fedora session preflight checks
+  ansible.builtin.include_tasks:
+    file: session.yml
+    apply:
+      tags:
+        - session
+  tags:
+    - session

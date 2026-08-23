@@ -1,0 +1,243 @@
+---
+- name: Require Fedora for the Fedora baseline
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['distribution'] == 'Fedora'
+    fail_msg: |-
+      This playbook configures Fedora only.
+
+      Detected:
+        {{ ansible_facts['distribution'] }} {{ ansible_facts['distribution_major_version'] }}
+  tags:
+    - always
+    - preflight
+
+- name: Detect Fedora release policy inputs
+  ansible.builtin.set_fact:
+    fedora_release_new_policy_requested: >-
+      {{ fedora_minimum_release is defined or
+         fedora_validated_releases is defined or
+         fedora_strict_release_check is defined }}
+    fedora_release_legacy_policy_requested: >-
+      {{ fedora44_required_release is defined or
+         fedora44_allow_other_release is defined }}
+  changed_when: false
+  tags:
+    - always
+    - preflight
+
+- name: Report deprecated Fedora release variables
+  ansible.builtin.debug:
+    msg: |-
+      Deprecated Fedora release variables were supplied. Migrate to:
+        fedora_minimum_release
+        fedora_validated_releases
+        fedora_strict_release_check
+
+      New fedora_* release variables take precedence when old and new inputs
+      are supplied together.
+  when: fedora_release_legacy_policy_requested | bool
+  tags:
+    - always
+    - preflight
+
+- name: Resolve the effective Fedora release policy
+  ansible.builtin.set_fact:
+    fedora_release_minimum_raw: >-
+      {{ (fedora_minimum_release | default(fedora_release_default_minimum))
+         if fedora_release_new_policy_requested | bool
+         else (fedora44_required_release |
+               default(fedora_release_default_minimum)) }}
+    fedora_release_validated_raw: >-
+      {{ (fedora_validated_releases |
+          default(fedora_release_default_validated))
+         if fedora_release_new_policy_requested | bool
+         else ([fedora44_required_release]
+               if fedora44_required_release is defined
+               else fedora_release_default_validated) }}
+    fedora_release_strict_raw: >-
+      {{ (fedora_strict_release_check |
+          default(fedora_release_default_strict) | bool)
+         if fedora_release_new_policy_requested | bool
+         else ((not (fedora44_allow_other_release | bool))
+               if fedora44_allow_other_release is defined
+               else (true
+                     if fedora44_required_release is defined
+                     else fedora_release_default_strict)) }}
+    fedora_release_blocked_raw: >-
+      {{ fedora_blocked_releases | default(fedora_release_default_blocked) }}
+  changed_when: false
+  tags:
+    - always
+    - preflight
+
+- name: Validate the Fedora release policy
+  ansible.builtin.assert:
+    that:
+      - (fedora_release_minimum_raw | string) is match('^[0-9]+$')
+      - fedora_release_minimum_raw | int > 0
+      - fedora_release_validated_raw | type_debug == 'list'
+      - fedora_release_validated_raw | length > 0
+      - fedora_release_strict_raw | type_debug == 'bool'
+      - >-
+        (fedora_release_validated_raw | map('string') |
+         select('match', '^[0-9]+$') | list | length) ==
+        (fedora_release_validated_raw | length)
+      - fedora_release_blocked_raw | type_debug == 'list'
+      - >-
+        (fedora_release_blocked_raw | map('string') |
+         select('match', '^[0-9]+$') | list | length) ==
+        (fedora_release_blocked_raw | length)
+    fail_msg: |-
+      Invalid Fedora release policy.
+
+      Expected:
+        fedora_minimum_release: positive integer
+        fedora_validated_releases: non-empty list of release integers
+        fedora_strict_release_check: boolean
+        fedora_blocked_releases: list of release integers (may be empty)
+
+      List values must be passed as YAML/JSON, for example:
+        -e '{"fedora_blocked_releases": [45]}'
+
+      Resolved:
+        minimum={{ fedora_release_minimum_raw }}
+        validated={{ fedora_release_validated_raw }}
+        strict={{ fedora_release_strict_raw }}
+        blocked={{ fedora_release_blocked_raw }}
+  tags:
+    - always
+    - preflight
+
+- name: Normalize the Fedora release policy
+  ansible.builtin.set_fact:
+    fedora_release_detected: >-
+      {{ ansible_facts['distribution_major_version'] | int }}
+    fedora_release_minimum: "{{ fedora_release_minimum_raw | int }}"
+    fedora_release_validated: >-
+      {{ fedora_release_validated_raw | map('int') | unique | sort }}
+    fedora_release_strict: "{{ fedora_release_strict_raw | bool }}"
+    fedora_release_blocked: >-
+      {{ fedora_release_blocked_raw | map('int') | unique | sort }}
+  changed_when: false
+  tags:
+    - always
+    - preflight
+
+- name: Require validated releases to meet the minimum
+  ansible.builtin.assert:
+    that:
+      - (fedora_release_validated | min) >= fedora_release_minimum
+    fail_msg: |-
+      Every validated Fedora release must be greater than or equal to the
+      configured minimum release.
+
+      Resolved:
+        minimum={{ fedora_release_minimum }}
+        validated={{ fedora_release_validated }}
+  tags:
+    - always
+    - preflight
+
+- name: Require no overlap between validated and blocked Fedora releases
+  ansible.builtin.assert:
+    that:
+      - (fedora_release_blocked | intersect(fedora_release_validated) | length) == 0
+    fail_msg: |-
+      A Fedora release cannot be both validated and blocked at the same time.
+
+      Conflicting releases:
+        {{ fedora_release_blocked | intersect(fedora_release_validated) | join(', ') }}
+
+      Resolved:
+        validated={{ fedora_release_validated }}
+        blocked={{ fedora_release_blocked }}
+  tags:
+    - always
+    - preflight
+
+- name: Require blocked Fedora releases to meet the minimum
+  ansible.builtin.assert:
+    that:
+      - >-
+        (fedora_release_blocked | length) == 0 or
+        (fedora_release_blocked | min) >= fedora_release_minimum
+    fail_msg: |-
+      Releases below the configured minimum are already unsupported, so
+      blocking them is redundant.
+
+      Resolved:
+        minimum={{ fedora_release_minimum }}
+        blocked={{ fedora_release_blocked }}
+  tags:
+    - always
+    - preflight
+
+- name: Require the minimum supported Fedora release
+  ansible.builtin.assert:
+    that:
+      - fedora_release_detected >= fedora_release_minimum
+    fail_msg: |-
+      This playbook supports Fedora releases >= {{ fedora_release_minimum }}.
+
+      Detected:
+        Fedora {{ fedora_release_detected }}
+  tags:
+    - always
+    - preflight
+
+- name: Reject a known-blocked Fedora release
+  ansible.builtin.assert:
+    that:
+      - fedora_release_detected not in fedora_release_blocked
+    fail_msg: |-
+      Fedora {{ fedora_release_detected }} is currently known to be unsupported by this repository.
+
+      Blocked releases:
+        {{ fedora_release_blocked | join(', ') }}
+
+      Validated releases:
+        {{ fedora_release_validated | join(', ') }}
+
+      This is different from an unvalidated release: the generic Fedora baseline is
+      known not to be safe or functional on this release.
+  tags:
+    - always
+    - preflight
+
+- name: Require a validated Fedora release in strict mode
+  ansible.builtin.assert:
+    that:
+      - fedora_release_detected in fedora_release_validated
+    fail_msg: |-
+      Fedora {{ fedora_release_detected }} has not been validated by this repository.
+
+      Validated releases:
+        {{ fedora_release_validated | join(', ') }}
+
+      Remove fedora_strict_release_check=true to continue with the generic
+      Fedora baseline.
+  when: fedora_release_strict | bool
+  tags:
+    - always
+    - preflight
+
+- name: Report an unvalidated Fedora release
+  ansible.builtin.debug:
+    msg: |-
+      Fedora {{ fedora_release_detected }} detected.
+
+      This release has not been validated by this repository. The playbook will
+      continue using the generic Fedora baseline. Package or configuration
+      failures will still stop the run.
+
+      Validated releases:
+        {{ fedora_release_validated | join(', ') }}
+
+      Use fedora_strict_release_check=true to reject unvalidated releases.
+  when:
+    - not (fedora_release_strict | bool)
+    - fedora_release_detected not in fedora_release_validated
+  tags:
+    - always
+    - preflight

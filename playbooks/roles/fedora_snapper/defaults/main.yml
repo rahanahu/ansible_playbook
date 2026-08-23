@@ -1,0 +1,5 @@
+---
+fedora_install_snapper: true
+fedora_snapper_create_root_config: "{{ fedora44_snapper_create_root_config | default(false) }}"
+fedora_snapper_create_baseline_snapshot: "{{ fedora44_snapper_create_baseline_snapshot | default(false) }}"
+fedora_snapper_baseline_description: fedora44-dev-baseline

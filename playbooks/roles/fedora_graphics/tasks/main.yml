@@ -1,0 +1,18 @@
+---
+- name: Run graphics system tasks
+  ansible.builtin.include_tasks:
+    file: system.yml
+    apply:
+      tags:
+        - system
+  tags:
+    - system
+
+- name: Run graphics session tasks
+  ansible.builtin.include_tasks:
+    file: session.yml
+    apply:
+      tags:
+        - session
+  tags:
+    - session

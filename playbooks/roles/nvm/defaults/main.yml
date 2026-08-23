@@ -1,0 +1,7 @@
+---
+nvm_allow_root: false
+
+# Node.js deliberately follows the latest LTS release rather than being
+# pinned. Set nodejs_version explicitly to pin a specific version instead;
+# when set, no release lookup is performed. This is an escape hatch.
+# nodejs_version: "v24.19.0"

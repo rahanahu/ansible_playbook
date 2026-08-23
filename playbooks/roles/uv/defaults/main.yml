@@ -1,0 +1,5 @@
+---
+# uv deliberately follows the latest stable GitHub release rather than being
+# pinned. Set uv_version explicitly to pin a specific version instead; when
+# set, no release lookup is performed.
+# uv_version: "0.12.5"

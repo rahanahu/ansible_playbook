@@ -1,59 +1,189 @@
-- name: Check if nvm is installed
-  command: which nvm
-  register: nvm_check
-  changed_when: false
-  failed_when: false
+---
+- name: Require the nvm target user
+  ansible.builtin.assert:
+    that:
+      - target_user is defined
+      - target_home is defined
+      - target_user != 'root' or nvm_allow_root | bool
+    fail_msg: >-
+      Resolve target_user and target_home before the nvm role. Root is allowed
+      only when nvm_allow_root=true for an explicit server profile.
+  tags:
+    - user
 
-- name: Download uv install script
-  get_url:
-    url: https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh
-    dest: /tmp/nvm_install.sh
+- name: Check whether nvm is installed for the target user
+  ansible.builtin.stat:
+    path: "{{ target_home }}/.nvm/nvm.sh"
+  register: nvm_install
+  tags:
+    - user
+
+- name: Create the target user Ansible cache directory
+  ansible.builtin.file:
+    path: "{{ target_home }}/.cache/ansible"
+    state: directory
     mode: "0700"
-  when: nvm_check.rc is defined and nvm_check.rc != 0
+  become: "{{ ansible_facts['user_id'] != target_user }}"
+  become_user: "{{ target_user }}"
+  when: not nvm_install.stat.exists
+  tags:
+    - user
 
-- name: Run nvm install script
-  command: /tmp/nvm_install.sh
+- name: Download the pinned nvm installer
+  ansible.builtin.get_url:
+    url: https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh
+    dest: "{{ target_home }}/.cache/ansible/nvm-install.sh"
+    mode: "0700"
+  become: "{{ ansible_facts['user_id'] != target_user }}"
+  become_user: "{{ target_user }}"
+  when: not nvm_install.stat.exists
+  tags:
+    - user
+
+- name: Install nvm for the target user
+  ansible.builtin.command:
+    argv:
+      - "{{ target_home }}/.cache/ansible/nvm-install.sh"
+  become: "{{ ansible_facts['user_id'] != target_user }}"
+  become_user: "{{ target_user }}"
   environment:
     PROFILE: /dev/null
-    NVM_DIR: "/home/{{ ansible_user_id }}/.nvm"
-    HOME: "/home/{{ ansible_user_id }}"
-  when: nvm_check.rc is defined and nvm_check.rc != 0
+    NVM_DIR: "{{ target_home }}/.nvm"
+    HOME: "{{ target_home }}"
+  changed_when: true
+  when: not nvm_install.stat.exists
+  tags:
+    - user
 
-- name: Ensure nvm init lines exist in .zshrc
+- name: Ensure the target user zsh init directory exists
+  ansible.builtin.file:
+    path: "{{ target_home }}/.local/share/zsh/init.d"
+    state: directory
+    mode: "0755"
+  become: "{{ ansible_facts['user_id'] != target_user }}"
+  become_user: "{{ target_user }}"
+  tags:
+    - user
+
+- name: Deploy the target user nvm zsh snippet
+  ansible.builtin.copy:
+    dest: "{{ target_home }}/.local/share/zsh/init.d/nvm.sh"
+    content: |
+      export NVM_DIR="$HOME/.nvm"
+      [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+      [ -s "$NVM_DIR/bash_completion" ] && . "$NVM_DIR/bash_completion"
+    mode: "0644"
+  become: "{{ ansible_facts['user_id'] != target_user }}"
+  become_user: "{{ target_user }}"
+  tags:
+    - user
+
+- name: Configure nvm in the target user bash profile
   ansible.builtin.blockinfile:
-    path: "/home/{{ ansible_user_id }}/.zshrc"
+    path: "{{ target_home }}/.bashrc"
     marker: "# {mark} ANSIBLE MANAGED NVM"
-    create: yes
+    create: true
     block: |
       export NVM_DIR="$HOME/.nvm"
       [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
       [ -s "$NVM_DIR/bash_completion" ] && . "$NVM_DIR/bash_completion"
-    owner: "{{ ansible_user_id }}"
-    group: "{{ ansible_user_id }}"
     mode: "0644"
-  become: false
+  become: "{{ ansible_facts['user_id'] != target_user }}"
+  become_user: "{{ target_user }}"
+  tags:
+    - user
 
-- name: Ensure nvm init lines exist in .bashrc
-  ansible.builtin.blockinfile:
-    path: "/home/{{ ansible_user_id }}/.bashrc"
-    marker: "# {mark} ANSIBLE MANAGED NVM"
-    create: yes
-    block: |
-      export NVM_DIR="$HOME/.nvm"
-      [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
-      [ -s "$NVM_DIR/bash_completion" ] && . "$NVM_DIR/bash_completion"
-    owner: "{{ ansible_user_id }}"
-    group: "{{ ansible_user_id }}"
-    mode: "0644"
-  become: false
-
-
-- name: insltall lts version of node
-  shell: |
-    export NVM_DIR="$HOME/.nvm"
-    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-    nvm install --lts
-    nvm use --lts
+- name: Check the currently selected default Node.js version
+  ansible.builtin.shell: |
+    . "$NVM_DIR/nvm.sh"
+    nvm version default
   args:
     executable: /bin/bash
-  when: nvm_check.rc is defined and nvm_check.rc != 0
+  become: "{{ ansible_facts['user_id'] != target_user }}"
+  become_user: "{{ target_user }}"
+  environment:
+    NVM_DIR: "{{ target_home }}/.nvm"
+    HOME: "{{ target_home }}"
+  register: nvm_node_check
+  changed_when: false
+  check_mode: false
+  failed_when: false
+  when: not (ansible_check_mode and not nvm_install.stat.exists)
+  tags:
+    - user
+
+- name: Look up the latest Node.js LTS release
+  ansible.builtin.uri:
+    url: https://nodejs.org/dist/index.json
+    return_content: true
+  register: nvm_node_lookup
+  changed_when: false
+  check_mode: false
+  failed_when: false
+  when: nodejs_version is not defined
+  tags:
+    - user
+
+- name: Resolve the effective Node.js version
+  ansible.builtin.set_fact:
+    nodejs_version_effective: >-
+      {{ (nodejs_version
+          if nodejs_version.startswith('v')
+          else 'v' + nodejs_version)
+         if nodejs_version is defined
+         else ((nvm_node_lookup.json
+                | selectattr('lts')
+                | map(attribute='version')
+                | first | default(''))
+                if ((nvm_node_lookup.status | default(0)) == 200)
+                else '') }}
+  changed_when: false
+  tags:
+    - user
+
+- name: Fail when Node.js cannot be resolved and is not installed
+  ansible.builtin.assert:
+    that:
+      - >-
+        nodejs_version_effective | length > 0 or
+        (nvm_node_check.rc | default(1)) == 0
+    fail_msg: >-
+      Could not resolve the latest Node.js LTS release from
+      https://nodejs.org/dist/index.json, and no working Node.js installation
+      was found via nvm for {{ target_user }}. Restore network access to
+      nodejs.org or pin nodejs_version explicitly to continue.
+  tags:
+    - user
+
+- name: Warn that the installed Node.js version is being kept
+  ansible.builtin.debug:
+    msg: >-
+      Could not resolve the latest Node.js LTS release from
+      https://nodejs.org/dist/index.json. Keeping the currently installed
+      Node.js version for {{ target_user }} unchanged. Set nodejs_version
+      explicitly to pin a version and avoid this lookup.
+  when:
+    - nodejs_version_effective | length == 0
+    - (nvm_node_check.rc | default(1)) == 0
+  tags:
+    - user
+
+- name: Install and set the resolved Node.js version as default
+  ansible.builtin.shell: |
+    . "$NVM_DIR/nvm.sh"
+    nvm install "{{ nodejs_version_effective }}"
+    nvm alias default "{{ nodejs_version_effective }}"
+  args:
+    executable: /bin/bash
+  become: "{{ ansible_facts['user_id'] != target_user }}"
+  become_user: "{{ target_user }}"
+  environment:
+    NVM_DIR: "{{ target_home }}/.nvm"
+    HOME: "{{ target_home }}"
+  when:
+    - nodejs_version_effective | length > 0
+    - not (ansible_check_mode and not nvm_install.stat.exists)
+    - nodejs_version_effective not in (nvm_node_check.stdout | default(''))
+  changed_when: true
+  tags:
+    - user

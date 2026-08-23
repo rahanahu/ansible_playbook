@@ -1,53 +1,107 @@
-- name: Install k3s (single node)
-  shell: |
-    curl -sfL https://get.k3s.io | sh -
-  args:
-    creates: /usr/local/bin/k3s
+---
+- name: Require the k3s target user
+  ansible.builtin.assert:
+    that:
+      - target_user is defined
+      - target_home is defined
+    fail_msg: >-
+      Resolve target_user and target_home before the k3s role (import the
+      target_user role first, as playbooks/k3s_pc.yml and
+      playbooks/dev_pc.yml do).
+  when: ansible_facts['system'] != 'Darwin'
+
+- name: Check installed k3s version
+  ansible.builtin.command: k3s --version
+  register: k3s_installed_version
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  when: ansible_facts['system'] != 'Darwin'
+
+- name: Determine the root-owned staging path for the pinned k3s installer
+  ansible.builtin.set_fact:
+    k3s_installer_dir: /var/lib/ansible/k3s
+    k3s_installer_path: /var/lib/ansible/k3s/install.sh
+  when: ansible_facts['system'] != 'Darwin'
+
+- name: Install the pinned k3s release (single node)
+  when:
+    - ansible_facts['system'] != 'Darwin'
+    - k3s_version not in (k3s_installed_version.stdout | default(''))
+  block:
+    - name: Create the root-owned k3s installer staging directory
+      ansible.builtin.file:
+        path: "{{ k3s_installer_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+      become: true
+      check_mode: false
+
+    - name: Download k3s installer pinned to the target release tag
+      ansible.builtin.get_url:
+        url: "https://raw.githubusercontent.com/k3s-io/k3s/{{ k3s_version | urlencode }}/install.sh"
+        dest: "{{ k3s_installer_path }}"
+        owner: root
+        group: root
+        mode: "0700"
+      become: true
+      check_mode: false
+
+    - name: Run the pinned k3s installer
+      ansible.builtin.command: "{{ k3s_installer_path }}"
+      environment:
+        INSTALL_K3S_VERSION: "{{ k3s_version }}"
+      become: true
+      register: k3s_install_result
+      changed_when: true
+
+    - name: Remove the downloaded k3s installer
+      ansible.builtin.file:
+        path: "{{ k3s_installer_path }}"
+        state: absent
+      become: true
+      check_mode: false
 
 - name: Ensure .kube directory exists
-  file:
-    path: "/home/{{ ansible_user_id }}/.kube"
+  ansible.builtin.file:
+    path: "{{ target_home }}/.kube"
     state: directory
-    owner: "{{ ansible_user_id }}"
-    group: "{{ ansible_user_id }}"
+    owner: "{{ target_user }}"
     mode: "0700"
+  when: ansible_facts['system'] != 'Darwin'
+
+- name: Check for a generated k3s kubeconfig
+  ansible.builtin.stat:
+    path: /etc/rancher/k3s/k3s.yaml
+  register: k3s_kubeconfig_stat
+  become: true
+  changed_when: false
+  check_mode: false
+  when: ansible_facts['system'] != 'Darwin'
+
+- name: Fail if the k3s installer ran but produced no kubeconfig
+  ansible.builtin.fail:
+    msg: >-
+      The k3s installer ran but /etc/rancher/k3s/k3s.yaml is still missing;
+      check that the k3s service started and is writing its kubeconfig to
+      the expected location.
+  when:
+    - ansible_facts['system'] != 'Darwin'
+    - not ansible_check_mode
+    - k3s_install_result is defined
+    - k3s_install_result is changed
+    - not k3s_kubeconfig_stat.stat.exists
 
 - name: Copy kubeconfig to user home
-  become: true
-  command: cp /etc/rancher/k3s/k3s.yaml /home/{{ ansible_user_id }}/.kube/config
-  args:
-    creates: "/home/{{ ansible_user_id }}/.kube/config"
-
-- name: Fix ownership and permissions of kubeconfig
-  file:
-    path: "/home/{{ ansible_user_id }}/.kube/config"
-    owner: "{{ ansible_user_id }}"
-    group: "{{ ansible_user_id }}"
+  ansible.builtin.copy:
+    src: /etc/rancher/k3s/k3s.yaml
+    dest: "{{ target_home }}/.kube/config"
+    remote_src: true
+    owner: "{{ target_user }}"
     mode: "0600"
-
-- name: Export KUBECONFIG for current session
-  shell: |
-    export KUBECONFIG=$HOME/.kube/config
-  args:
-    executable: /bin/bash
-  changed_when: false
-
-- name: Ensure KUBECONFIG is set in .bashrc
-  lineinfile:
-    path: "/home/{{ ansible_user_id }}/.bashrc"
-    line: 'export KUBECONFIG=$HOME/.kube/config'
-    state: present
-    create: yes
-    owner: "{{ ansible_user_id }}"
-    group: "{{ ansible_user_id }}"
-    mode: "0644"
-
-- name: Ensure KUBECONFIG is set in .zshrc
-  lineinfile:
-    path: "/home/{{ ansible_user_id }}/.zshrc"
-    line: 'export KUBECONFIG=$HOME/.kube/config'
-    state: present
-    create: yes
-    owner: "{{ ansible_user_id }}"
-    group: "{{ ansible_user_id }}"
-    mode: "0644"
+  become: true
+  when:
+    - ansible_facts['system'] != 'Darwin'
+    - k3s_kubeconfig_stat.stat.exists

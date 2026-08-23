@@ -1,0 +1,129 @@
+---
+- name: Require a supported user environment operating system
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['system'] in ['Linux', 'Darwin']
+    fail_msg: >-
+      Target-user resolution supports Linux and macOS only
+      (detected {{ ansible_facts['system'] }}).
+
+- name: Read a safe sudo caller candidate
+  ansible.builtin.set_fact:
+    target_sudo_user: >-
+      {{ lookup('ansible.builtin.env', 'SUDO_USER') | default('', true) }}
+  changed_when: false
+
+- name: Resolve the requested target user
+  ansible.builtin.set_fact:
+    target_resolved_user: >-
+      {{ target_user | default(
+         workstation_user | default(
+           ansible_facts['user_id'] if ansible_facts['user_id'] != 'root' else
+           (target_sudo_user if target_sudo_user not in ['', 'root'] else
+            target_user_fallback),
+           true), true) }}
+    target_requested_home: >-
+      {{ target_home | default(workstation_home | default('', true), true) }}
+  changed_when: false
+
+- name: Require an unambiguous target user
+  ansible.builtin.assert:
+    that:
+      - target_resolved_user | length > 0
+      - target_user_allow_root | bool or target_resolved_user != 'root'
+    fail_msg: |-
+      Could not determine a safe target user for this playbook.
+
+      {% if target_user_allow_root | bool %}
+      Specify the target explicitly:
+
+        -e target_user=root
+
+      or:
+
+        -e target_user=<login-user>
+      {% else %}
+      This playbook requires a non-root target user.
+      Specify it explicitly:
+
+        -e target_user=<desktop-login-user>
+      {% endif %}
+
+- name: Read the target account from passwd on Linux
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ target_resolved_user }}"
+    fail_key: false
+  when: ansible_facts['system'] == 'Linux'
+
+- name: Require the target account to exist on Linux
+  ansible.builtin.assert:
+    that:
+      - >-
+        target_resolved_user in (ansible_facts.getent_passwd | default({}))
+      - >-
+        ((ansible_facts.getent_passwd | default({})).get(
+          target_resolved_user, [])) | length > 4
+    fail_msg: >-
+      The target user {{ target_resolved_user }} does not exist in the passwd
+      database. Pass an existing account with -e target_user=<user>.
+  when: ansible_facts['system'] == 'Linux'
+
+- name: Resolve the target home from passwd on Linux
+  ansible.builtin.set_fact:
+    target_resolved_home: >-
+      {{ ansible_facts.getent_passwd[target_resolved_user][4] }}
+  changed_when: false
+  when: ansible_facts['system'] == 'Linux'
+
+- name: Read the target home from Directory Service on macOS
+  ansible.builtin.command:
+    argv:
+      - dscl
+      - .
+      - -read
+      - "/Users/{{ target_resolved_user }}"
+      - NFSHomeDirectory
+  register: target_dscl_home
+  changed_when: false
+  when: ansible_facts['system'] == 'Darwin'
+
+- name: Resolve the target home on macOS
+  ansible.builtin.set_fact:
+    target_resolved_home: >-
+      {{ target_dscl_home.stdout |
+         regex_replace('^NFSHomeDirectory:\\s*', '') | trim }}
+  changed_when: false
+  when: ansible_facts['system'] == 'Darwin'
+
+- name: Validate an explicitly supplied target home
+  ansible.builtin.assert:
+    that:
+      - >-
+        target_requested_home | length == 0 or
+        target_requested_home == target_resolved_home
+    fail_msg: >-
+      target_home={{ target_requested_home }} does not match the account
+      database value {{ target_resolved_home }} for {{ target_resolved_user }}.
+
+- name: Publish the target account
+  ansible.builtin.set_fact:
+    target_user: "{{ target_resolved_user }}"
+    target_home: "{{ target_resolved_home }}"
+    workstation_user: "{{ target_resolved_user }}"
+    workstation_home: "{{ target_resolved_home }}"
+  changed_when: false
+
+- name: Check the target home directory
+  ansible.builtin.stat:
+    path: "{{ target_home }}"
+  register: target_home_stat
+
+- name: Require an existing target home directory
+  ansible.builtin.assert:
+    that:
+      - target_home_stat.stat.exists
+      - target_home_stat.stat.isdir
+    fail_msg: >-
+      The resolved home {{ target_home }} for {{ target_user }} is not an
+      existing directory.

@@ -1,10 +1,94 @@
-- name: Download helm install script
-  get_url:
-    url: https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
-    dest: /tmp/get_helm.sh
-    mode: "0700"
+---
+- name: Require the helm target user
+  ansible.builtin.assert:
+    that:
+      - target_user is defined
+      - target_home is defined
+    fail_msg: >-
+      Resolve target_user and target_home before the helm role (import the
+      target_user role first, as playbooks/k3s_pc.yml and
+      playbooks/dev_pc.yml do).
+  when: ansible_facts['system'] != 'Darwin'
 
-- name: Run helm install script
-  command: /tmp/get_helm.sh
-  args:
-    creates: /usr/local/bin/helm
+- name: Check installed helm version
+  ansible.builtin.command: helm version --short
+  register: helm_installed_version
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  when: ansible_facts['system'] != 'Darwin'
+
+- name: Resolve the helm release architecture
+  ansible.builtin.set_fact:
+    helm_arch: "{{ helm_arch_map[ansible_facts['architecture']] | default('') }}"
+  vars:
+    helm_arch_map:
+      x86_64: amd64
+      amd64: amd64
+      aarch64: arm64
+      arm64: arm64
+  when: ansible_facts['system'] != 'Darwin'
+
+- name: Fail on unsupported helm architecture
+  ansible.builtin.fail:
+    msg: >-
+      Unsupported architecture for helm: {{ ansible_facts['architecture'] }}.
+      Supported architectures are x86_64/amd64 (amd64) and aarch64/arm64
+      (arm64); add a helm_arch_map entry and a matching
+      helm_archive_checksums entry before adding new architectures.
+  when:
+    - ansible_facts['system'] != 'Darwin'
+    - (helm_arch | default('')) | length == 0
+
+- name: Install the pinned helm release
+  vars:
+    helm_download_dir: "{{ target_home }}/.cache/ansible/helm-download"
+  when:
+    - ansible_facts['system'] != 'Darwin'
+    - helm_version not in (helm_installed_version.stdout | default(''))
+  block:
+    - name: Create the helm download directory
+      ansible.builtin.file:
+        path: "{{ helm_download_dir }}"
+        state: directory
+        owner: "{{ target_user }}"
+        mode: "0700"
+      check_mode: false
+
+    - name: Download helm release archive
+      ansible.builtin.get_url:
+        url: "https://get.helm.sh/helm-{{ helm_version }}-linux-{{ helm_arch }}.tar.gz"
+        dest: "{{ helm_download_dir }}/helm-{{ helm_version }}-linux-{{ helm_arch }}.tar.gz"
+        checksum: "{{ helm_archive_checksums[helm_arch] }}"
+        owner: "{{ target_user }}"
+        mode: "0644"
+      check_mode: false
+
+    - name: Extract helm release archive
+      ansible.builtin.unarchive:
+        src: "{{ helm_download_dir }}/helm-{{ helm_version }}-linux-{{ helm_arch }}.tar.gz"
+        dest: "{{ helm_download_dir }}"
+        remote_src: true
+        owner: "{{ target_user }}"
+      check_mode: false
+
+    - name: Install helm binary
+      ansible.builtin.copy:
+        src: "{{ helm_download_dir }}/linux-{{ helm_arch }}/helm"
+        dest: "{{ helm_install_dir }}/helm"
+        remote_src: true
+        owner: root
+        group: root
+        mode: "0755"
+      become: true
+
+    - name: Remove the helm download directory
+      ansible.builtin.file:
+        path: "{{ helm_download_dir }}"
+        state: absent
+      check_mode: false
+
+- name: Install helm via Homebrew on macOS
+  ansible.builtin.include_tasks:
+    file: mac.yml
+  when: ansible_facts['system'] == 'Darwin'

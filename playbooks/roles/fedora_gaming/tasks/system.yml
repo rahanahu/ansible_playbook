@@ -1,0 +1,26 @@
+---
+- name: Install Steam and MangoHud baseline
+  ansible.builtin.dnf:
+    name:
+      - steam
+      - steam-devices
+      - mangohud
+    state: present
+  become: true
+
+- name: Install optional gaming troubleshooting packages
+  ansible.builtin.dnf:
+    name:
+      - gamemode
+      - gamescope
+      - protontricks
+    state: present
+  become: true
+  when: fedora_install_gaming_extras | bool
+
+- name: Install Flatpak for optional user gaming tools
+  ansible.builtin.dnf:
+    name: flatpak
+    state: present
+  become: true
+  when: fedora_install_protonplus | bool

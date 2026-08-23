@@ -1,0 +1,18 @@
+---
+- name: Configure gaming system packages
+  ansible.builtin.include_tasks:
+    file: system.yml
+    apply:
+      tags:
+        - system
+  tags:
+    - system
+
+- name: Configure target-user gaming tools
+  ansible.builtin.include_tasks:
+    file: user.yml
+    apply:
+      tags:
+        - user
+  tags:
+    - user

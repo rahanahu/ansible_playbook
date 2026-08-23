@@ -1,0 +1,18 @@
+---
+- name: Install common graphics support
+  ansible.builtin.import_tasks: common.yml
+  tags:
+    - system
+    - graphics
+
+- name: Detect supported graphics hardware
+  ansible.builtin.import_tasks: detect.yml
+  tags:
+    - system
+    - graphics
+
+- name: Validate detected AMD graphics hardware
+  ansible.builtin.import_tasks: amd.yml
+  tags:
+    - system
+    - graphics
