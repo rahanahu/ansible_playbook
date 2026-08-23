@@ -1,7 +1,7 @@
 ---
 name: reviewer
 description: Independent read-only semantic review of meaningful repository changes.
-tools: Read, Grep, Glob
+tools: Read, Grep, Glob, WebSearch, WebFetch
 model: opus
 color: purple
 effort: xhigh

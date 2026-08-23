@@ -1,7 +1,7 @@
 ---
 name: implementer
 description: Implement a bounded approved repository change and run fast local validation.
-tools: Read, Grep, Glob, Edit, Write, Bash
+tools: Read, Grep, Glob, Edit, Write, Bash, WebSearch, WebFetch
 model: sonnet
 color: green
 permissionMode: acceptEdits
