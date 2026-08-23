@@ -1,0 +1,3 @@
+# User/machine-local Claude state, per the tracking policy in CLAUDE.md.
+.claude/settings.local.json
+.claude/agent-memory-local/
