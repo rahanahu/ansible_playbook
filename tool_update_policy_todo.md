@@ -65,3 +65,29 @@ idempotency確認は未実施。
 - [x] Hazkeyのpinを変更したときだけbuild/installが再実行される。
 - [x] Helmは同じversion指定で再実行してもidempotentである（v3.21.4 → v4.2.4へ実際にupgradeし、2回目 `changed=0` を確認）。
 - [ ] k3sは同じversion指定で再実行してもidempotentである（manual validation required: systemd serviceを起動するため検証機では未install）。
+
+## Manual validation never performed on real hardware
+
+The Fedora LXC/graphics refactor (`docs/history/fedora44_lxc_refactor.md`),
+the generic Fedora baseline refactor (`docs/history/generic_fedora_refactor.md`),
+and the generic zsh entrypoint refactor
+(`docs/history/generic_zsh_playbook_refactor.md`) all shipped, but the
+following acceptance steps they call for were never actually run on real
+hardware and remain genuinely open:
+
+- The Fedora Workstation and LXC entrypoints (`playbooks/fedora_workstation.yml`,
+  `playbooks/fedora_system.yml`, `playbooks/fedora_lxc.yml`, and their
+  `fedora44_*` compatibility wrappers) have not been run twice on real Fedora
+  hardware/LXC guests with recaps compared to confirm second-run idempotency.
+- k3s has not actually been installed and re-run to confirm idempotency (see
+  the open item directly above; the verification machine never started the
+  systemd service).
+- The Ubuntu/Debian and macOS paths of `playbooks/zsh.yml` have not been
+  exercised on real hosts (package availability, login shell, direnv,
+  headless override, legacy `.zshrc` migration).
+- AMD/Vulkan graphics validation (per-device amdgpu/RADV checks, non-AMD and
+  mixed-GPU layouts) has not been confirmed on real AMD or mixed-GPU
+  hardware.
+- Hazkey has not been rebuilt against a real external static Swift toolchain
+  and confirmed to link statically and work end-to-end as an installed input
+  method.

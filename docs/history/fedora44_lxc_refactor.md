@@ -1,5 +1,11 @@
 # Fedora 44 LXC and graphics acceptance TODO
 
+> **Historical record.** This document describes the Fedora 44 LXC baseline
+> and AMD graphics refactor. The implementation it describes has shipped and
+> is present in the current code. The unchecked boxes below are manual
+> acceptance steps on real Fedora/LXC/Workstation hardware that were never
+> performed, not outstanding implementation work.
+
 ## Implemented scope
 
 The working implementation now provides:

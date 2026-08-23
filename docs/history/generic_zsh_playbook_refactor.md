@@ -1,5 +1,12 @@
 # Generic zsh playbook implementation TODO
 
+> **Historical record.** This document describes the generic
+> `playbooks/zsh.yml` entrypoint (Ubuntu/Debian/Fedora/macOS, target-user and
+> root-safety rules). The implementation it describes has shipped and is
+> present in the current code. The unchecked boxes below are manual
+> acceptance steps on real Linux and macOS hardware that were never
+> performed, not outstanding implementation work.
+
 ## 評価
 
 実装可能。既存の `target_user` role と `zsh` role には必要な機能がほぼ揃っており、

@@ -1,5 +1,16 @@
 # Generic Fedora baseline refactor TODO
 
+> **Historical record.** This document describes the release-generic Fedora
+> baseline refactor (canonical `fedora_*` roles/entrypoints, release policy,
+> and public variable migration). The implementation it describes has shipped
+> and is present in the current code. The unchecked boxes below are manual
+> acceptance/regression steps on real Fedora hardware and release fixtures
+> that were never performed, not outstanding implementation work. The
+> unchecked boxes are a mixture of engineering tasks that were completed but
+> never ticked and acceptance steps that were genuinely never performed, and
+> the outstanding real-hardware validation is tracked in
+> `tool_update_policy_todo.md`.
+
 ## 評価
 
 実装可能。設計の方向性も妥当。ただしこれは単純なファイルrenameではなく、release
