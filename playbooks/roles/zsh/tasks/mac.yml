@@ -3,7 +3,7 @@
   ansible.builtin.set_fact:
     homebrew_prefix: >-
       {{ '/opt/homebrew'
-         if ansible_architecture in ['arm64', 'aarch64']
+         if ansible_facts['architecture'] in ['arm64', 'aarch64']
          else '/usr/local' }}
   changed_when: false
 
@@ -25,12 +25,19 @@
 - name: Ensure Homebrew packages are installed
   community.general.homebrew:
     name:
-      - zsh
       - git
       - zoxide
-      - direnv
       - sheldon
     state: present
     update_homebrew: false
     path: "{{ homebrew_prefix }}/bin"
   become: false
+
+- name: Ensure Homebrew direnv is installed
+  community.general.homebrew:
+    name: direnv
+    state: present
+    update_homebrew: false
+    path: "{{ homebrew_prefix }}/bin"
+  become: false
+  when: zsh_install_direnv_package | bool

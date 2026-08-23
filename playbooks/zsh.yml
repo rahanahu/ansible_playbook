@@ -1,0 +1,95 @@
+---
+- name: Configure a managed zsh environment
+  hosts: localhost
+  connection: local
+  gather_facts: true
+
+  pre_tasks:
+    - name: Require a supported zsh platform
+      ansible.builtin.assert:
+        that:
+          - >-
+            ansible_facts['system'] == 'Darwin' or
+            (ansible_facts['system'] == 'Linux' and
+             ansible_facts['distribution'] in ['Ubuntu', 'Debian', 'Fedora'])
+        fail_msg: >-
+          The zsh entrypoint supports Ubuntu, Debian, Fedora, and macOS only
+          (detected system={{ ansible_facts['system'] }},
+          distribution={{ ansible_facts['distribution'] }}).
+      tags:
+        - always
+
+    - name: Require direct normal-user execution on macOS
+      ansible.builtin.assert:
+        that:
+          - ansible_facts['user_id'] != 'root'
+        fail_msg: |-
+          On macOS, run this playbook directly as the user being configured.
+          Do not use sudo and do not run it from a root shell:
+
+            ansible-playbook playbooks/zsh.yml -i localhost, -c local
+      when: ansible_facts['system'] == 'Darwin'
+      tags:
+        - always
+
+    - name: Resolve the zsh target user
+      ansible.builtin.import_role:
+        name: target_user
+      vars:
+        target_user_allow_root: "{{ ansible_facts['system'] == 'Linux' }}"
+      tags:
+        - always
+
+    - name: Require the invoking user as the macOS target
+      ansible.builtin.assert:
+        that:
+          - target_user == ansible_facts['user_id']
+        fail_msg: |-
+          On macOS, target_user must be the user running Ansible
+          (invoking user={{ ansible_facts['user_id'] }}, target_user={{ target_user }}).
+          Run without sudo and without a target_user override:
+
+            ansible-playbook playbooks/zsh.yml -i localhost, -c local
+      when: ansible_facts['system'] == 'Darwin'
+      tags:
+        - always
+
+    - name: Resolve the zsh entrypoint capabilities
+      ansible.builtin.set_fact:
+        zsh_entrypoint_manage_login_shell: >-
+          {{ ansible_facts['system'] == 'Linux' and target_user != 'root' and
+             (zsh_manage_login_shell | default(true) | bool) }}
+        zsh_entrypoint_enable_direnv: >-
+          {{ target_user != 'root' and
+             (zsh_enable_direnv | default(true) | bool) }}
+        zsh_entrypoint_install_direnv_package: >-
+          {{ target_user != 'root' and
+             (zsh_install_direnv_package | default(true) | bool) }}
+        zsh_entrypoint_install_desktop_packages: >-
+          {{ ansible_facts['system'] == 'Linux' and target_user != 'root' and
+             (zsh_install_desktop_packages | default(true) | bool) }}
+      changed_when: false
+      tags:
+        - always
+
+  tasks:
+    - name: Configure the managed zsh environment
+      ansible.builtin.include_role:
+        name: zsh
+        apply:
+          tags:
+            - zsh
+      vars:
+        zsh_target_user: "{{ target_user }}"
+        zsh_target_home: "{{ target_home }}"
+        zsh_install_system_packages: true
+        zsh_manage_login_shell: "{{ zsh_entrypoint_manage_login_shell }}"
+        zsh_enable_direnv: "{{ zsh_entrypoint_enable_direnv }}"
+        zsh_install_direnv_package: >-
+          {{ zsh_entrypoint_install_direnv_package }}
+        zsh_install_desktop_packages: >-
+          {{ zsh_entrypoint_install_desktop_packages }}
+      tags:
+        - zsh
+        - system
+        - user

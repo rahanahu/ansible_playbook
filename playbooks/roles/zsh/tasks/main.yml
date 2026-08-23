@@ -31,6 +31,7 @@
   when:
     - zsh_install_system_packages | bool
     - zsh_install_direnv_package | bool
+    - zsh_target_user != 'root'
     - ansible_system == 'Linux'
   tags:
     - system
@@ -43,6 +44,7 @@
   when:
     - zsh_install_system_packages | bool
     - zsh_install_desktop_packages | bool
+    - zsh_target_user != 'root'
     - ansible_system == 'Linux'
   tags:
     - system
@@ -310,6 +312,7 @@
   when:
     - zsh_manage_login_shell | bool
     - zsh_target_user != 'root'
+    - ansible_system != 'Darwin'
   tags:
     - user
 
@@ -321,5 +324,6 @@
   when:
     - zsh_manage_login_shell | bool
     - zsh_target_user != 'root'
+    - ansible_system != 'Darwin'
   tags:
     - user

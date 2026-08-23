@@ -7,10 +7,12 @@ workstations and Fedora LXC guests.
 
 | Goal | Playbook |
 |---|---|
+| Install only the managed zsh environment | `playbooks/zsh.yml` |
 | Build a complete Fedora 44 desktop | `playbooks/fedora44_workstation.yml` |
 | Configure a Fedora 44 LXC guest | `playbooks/fedora44_lxc.yml` |
 | Repair workstation system components only | `playbooks/fedora44_system.yml` |
 | Configure one user's home environment | `playbooks/user.yml` |
+| Build the complete developer environment | `playbooks/dev_pc.yml` |
 | Build Hazkey after validating Fcitx5/Mozc | `playbooks/hazkey.yml` |
 
 For an ordinary Fedora desktop, use this one command as the normal login user:
@@ -44,6 +46,59 @@ Run the k3s workstation playbook on Linux:
 ```bash
 ansible-playbook playbooks/k3s_pc.yml -i localhost, -c local
 ```
+
+## Managed zsh environment
+
+`playbooks/zsh.yml` installs only the managed zsh environment. It does not
+install Docker, uv, nvm, or Fedora desktop components.
+
+On Ubuntu, Debian, or Fedora, run it as the normal user. System packages use
+privilege escalation internally:
+
+```bash
+ansible-playbook playbooks/zsh.yml -i localhost, -c local -K
+```
+
+This installs zsh, git, zoxide, direnv, optional desktop clipboard integration,
+pinned fzf and Sheldon, and the managed zsh configuration. The normal Linux
+user's login shell becomes zsh. For a headless machine, omit the desktop package:
+
+```bash
+ansible-playbook playbooks/zsh.yml -i localhost, -c local -K \
+  -e zsh_install_desktop_packages=false
+```
+
+Linux root is never selected implicitly. To configure root from a direct root
+login, specify it explicitly:
+
+```bash
+ansible-playbook playbooks/zsh.yml -i localhost, -c local \
+  -e target_user=root
+```
+
+Root receives the managed zsh environment, fzf, zoxide, and Sheldon, but not
+direnv or desktop integration. Its login shell remains unchanged. A different
+existing Linux account can also be selected; its home is read from passwd:
+
+```bash
+ansible-playbook playbooks/zsh.yml -i localhost, -c local -K \
+  -e target_user=yusuke
+```
+
+On macOS, run the playbook directly as the normal user being configured:
+
+```bash
+ansible-playbook playbooks/zsh.yml -i localhost, -c local
+```
+
+macOS uses the system `/bin/zsh`; the playbook does not install Homebrew zsh or
+change the login shell. Homebrew provides the supporting tools. Running through
+sudo/root or targeting another macOS account is intentionally rejected before
+Homebrew or user configuration changes.
+
+For the initial complete setup, run without tags or use `--tags zsh`. The
+`system` and `user` tags are available for later repair runs; `--tags user` does
+not install missing system packages.
 
 ## Fedora 44 KDE workstation
 
@@ -239,7 +294,7 @@ or automate KDE/Fcitx5 UI and input validation.
 
 ## Notes
 
-- macOS: Homebrew is installed automatically if missing. Docker Desktop is intentionally not installed by this repository.
+- macOS: the system `/bin/zsh` is used. Homebrew is installed automatically if missing for supporting tools; Docker Desktop is intentionally not installed by this repository.
 - k3s is Linux-only; no implicit kind/minikube replacement is installed on macOS.
 - Fedora and Debian-family systems use Docker Engine from Docker's official repositories.
 - `fzf` is installed from a pinned Git tag into `~/.local/share/fzf`; its binary is linked into `~/.local/bin`.

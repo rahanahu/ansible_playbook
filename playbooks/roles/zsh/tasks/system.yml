@@ -20,6 +20,7 @@
   when:
     - ansible_distribution == 'Fedora'
     - zsh_install_direnv_package | bool
+    - zsh_target_user != 'root'
   tags:
     - system
     - zsh
@@ -32,6 +33,7 @@
   when:
     - ansible_distribution == 'Fedora'
     - zsh_install_desktop_packages | bool
+    - zsh_target_user != 'root'
   tags:
     - system
     - zsh
