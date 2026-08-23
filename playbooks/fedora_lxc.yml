@@ -86,7 +86,8 @@
         - system
         - firewall
 
-- ansible.builtin.import_playbook: user.yml
+- name: Apply the LXC user profile
+  ansible.builtin.import_playbook: user.yml
   vars:
     target_user_fallback: root
     user_profile_default: server

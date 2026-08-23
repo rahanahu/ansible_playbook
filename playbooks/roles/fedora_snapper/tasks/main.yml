@@ -60,6 +60,7 @@
       - create-config
       - /
   become: true
+  changed_when: true
   when:
     - fedora_snapper_create_root_config | bool
     - fedora_snapper_root_config.rc != 0
@@ -108,6 +109,7 @@
       - --description
       - "{{ fedora_snapper_baseline_description }}"
   become: true
+  changed_when: true
   when:
     - fedora_snapper_create_baseline_snapshot | bool
     - fedora_snapper_baseline_description not in fedora_snapper_list.stdout

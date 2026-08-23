@@ -303,6 +303,7 @@
     PATH: >-
       {{ (hazkey_swift_toolchain_path ~ '/usr/bin:' ~ ansible_facts['env']['PATH'])
          if hazkey_swift_toolchain_path else ansible_facts['env']['PATH'] }}
+  changed_when: true
   when: hazkey_rebuild_required | bool
   tags:
     - user
@@ -321,6 +322,7 @@
     PATH: >-
       {{ (hazkey_swift_toolchain_path ~ '/usr/bin:' ~ ansible_facts['env']['PATH'])
          if hazkey_swift_toolchain_path else ansible_facts['env']['PATH'] }}
+  changed_when: true
   when: hazkey_rebuild_required | bool
   tags:
     - user
@@ -357,6 +359,7 @@
       - --install
       - "{{ hazkey_build_directory }}"
   become: true
+  changed_when: true
   when: hazkey_rebuild_required | bool
   tags:
     - system

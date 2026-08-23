@@ -1,7 +1,9 @@
 ---
-- ansible.builtin.import_playbook: fedora_system.yml
+- name: Apply the Fedora system baseline
+  ansible.builtin.import_playbook: fedora_system.yml
 
-- ansible.builtin.import_playbook: user.yml
+- name: Apply the workstation user profile
+  ansible.builtin.import_playbook: user.yml
   vars:
     user_require_non_root_target: true
     user_profile_default: workstation

@@ -13,6 +13,7 @@
   ansible.builtin.shell: /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
   environment:
     NONINTERACTIVE: "1"
+  changed_when: true
   when: not brew_stat.stat.exists
 
 - name: Install helm with Homebrew

@@ -23,6 +23,7 @@
       - ffmpeg
       - --allowerasing
   become: true
+  changed_when: true
   when:
     - fedora_install_desktop_essentials | bool
     - fedora_ffmpeg_package.rc != 0
@@ -67,6 +68,7 @@
       - mesa-va-drivers
       - mesa-va-drivers-freeworld
   become: true
+  changed_when: true
   when:
     - fedora_install_desktop_essentials | bool
     - fedora_vaapi_fedora_package.rc == 0

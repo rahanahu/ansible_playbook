@@ -50,6 +50,7 @@
     PROFILE: /dev/null
     NVM_DIR: "{{ target_home }}/.nvm"
     HOME: "{{ target_home }}"
+  changed_when: true
   when: not nvm_install.stat.exists
   tags:
     - user
