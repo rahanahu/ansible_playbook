@@ -1,0 +1,141 @@
+---
+- name: Read the root filesystem type
+  ansible.builtin.command:
+    argv:
+      - findmnt
+      - -n
+      - -o
+      - FSTYPE
+      - /
+  register: fedora_btrfs_layout_root_fstype
+  changed_when: false
+  check_mode: false
+
+- name: Require Btrfs for the managed subvolume layout
+  ansible.builtin.assert:
+    that:
+      - (fedora_btrfs_layout_root_fstype.stdout | default('')) | trim == 'btrfs'
+    fail_msg: >-
+      The root filesystem is not Btrfs. This role only manages a Btrfs
+      subvolume layout and will not modify any other filesystem.
+
+- name: Require the root filesystem to be a recognizable Btrfs subvolume
+  ansible.builtin.command:
+    argv:
+      - btrfs
+      - subvolume
+      - show
+      - /
+  become: true
+  changed_when: false
+  check_mode: false
+
+- name: Read the mount source path of the root filesystem
+  ansible.builtin.command:
+    argv:
+      - findmnt
+      - -n
+      - -o
+      - FSROOT
+      - /
+  register: fedora_btrfs_layout_root_fsroot
+  changed_when: false
+  check_mode: false
+
+- name: Read the mount source path of /home
+  ansible.builtin.command:
+    argv:
+      - findmnt
+      - -n
+      - -o
+      - FSROOT
+      - /home
+  register: fedora_btrfs_layout_home_fsroot
+  changed_when: false
+  check_mode: false
+  failed_when: false
+
+- name: Require /home to be an independent subvolume from /
+  ansible.builtin.assert:
+    that:
+      - fedora_btrfs_layout_home_fsroot.rc == 0
+      - (fedora_btrfs_layout_home_fsroot.stdout | trim | length) > 0
+      - >-
+        (fedora_btrfs_layout_root_fsroot.stdout | trim) !=
+        (fedora_btrfs_layout_home_fsroot.stdout | trim)
+    fail_msg: >-
+      /home is not mounted from an independent Btrfs subvolume (findmnt
+      could not resolve /home, or its FSROOT matches /). Automatic
+      migration of an existing single-subvolume layout is intentionally
+      not supported by this role.
+
+- name: Read the root filesystem UUID
+  ansible.builtin.command:
+    argv:
+      - findmnt
+      - -n
+      - -o
+      - UUID
+      - /
+  register: fedora_btrfs_layout_root_uuid_raw
+  changed_when: false
+  check_mode: false
+  failed_when: >-
+    fedora_btrfs_layout_root_uuid_raw.rc != 0 or
+    (fedora_btrfs_layout_root_uuid_raw.stdout | trim | length) == 0
+
+- name: Record the root filesystem UUID
+  ansible.builtin.set_fact:
+    fedora_btrfs_layout_root_uuid: "{{ fedora_btrfs_layout_root_uuid_raw.stdout | trim }}"
+  changed_when: false
+
+- name: Read the fstab-defined mount options for the root filesystem
+  ansible.builtin.command:
+    argv:
+      - findmnt
+      - --fstab
+      - -n
+      - --first-only
+      - -o
+      - OPTIONS
+      - /
+  register: fedora_btrfs_layout_root_fstab_opts
+  changed_when: false
+  check_mode: false
+  failed_when: >-
+    fedora_btrfs_layout_root_fstab_opts.rc != 0 or
+    (fedora_btrfs_layout_root_fstab_opts.stdout | trim | length) == 0
+
+- name: Record the reusable non-subvolume mount options for the root filesystem
+  ansible.builtin.set_fact:
+    fedora_btrfs_layout_root_opts: >-
+      {{ fedora_btrfs_layout_root_fstab_opts.stdout | trim
+         | split(',')
+         | reject('match', '^subvol(id)?=')
+         | join(',') }}
+  changed_when: false
+
+- name: Require usable non-subvolume mount options for the root filesystem
+  ansible.builtin.assert:
+    that:
+      - (fedora_btrfs_layout_root_opts | length) > 0
+    fail_msg: >-
+      Could not determine reusable mount options for / from /etc/fstab after
+      removing subvol/subvolid. Refusing to write new fstab entries with
+      empty options.
+
+- name: Record the /etc/fstab health before applying the Btrfs layout
+  ansible.builtin.command:
+    argv:
+      - findmnt
+      - --verify
+  register: fedora_btrfs_layout_fstab_verify_before
+  changed_when: false
+  check_mode: false
+  failed_when: false
+
+- name: Record whether any Btrfs subvolume is opted in
+  ansible.builtin.set_fact:
+    fedora_btrfs_layout_has_enabled_subvolumes: >-
+      {{ (fedora_btrfs_layout_subvolumes | selectattr('enabled', 'truthy', True) | list | length) > 0 }}
+  changed_when: false

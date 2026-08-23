@@ -39,6 +39,24 @@ README.md under "Tool update policy".
   `/.snapshots` subvolume left without a configuration file). The two
   guard assertions that detect these states have passed on a healthy host,
   but neither has been triggered against a genuinely inconsistent one.
+- `fedora_btrfs_layout` has never been run on real hardware or in a VM, not
+  even with `--check`.
+- Whether the fstab entries `fedora_btrfs_layout` generates actually allow
+  the system to boot has not been verified.
+- Whether the role fails closed as intended when a target mountpoint is
+  non-empty, including the case where the mountpoint is a symlink, has not
+  been verified.
+- Whether stopping and restarting the Docker and containerd units around
+  the remount works correctly has not been verified.
+- Whether the post-mount permission restoration and SELinux relabeling
+  produce correct results has not been verified.
+- Whether a second run of `fedora_btrfs_layout` reports `changed=0` has not
+  been verified.
+- Whether services stopped on a failed subvolume setup are actually
+  restarted by the `rescue` block added around the mount/permission/SELinux
+  steps in `tasks/subvolume.yml` has not been verified.
+- Behavior on a host with SELinux disabled, where `restorecon` is now
+  skipped, has not been verified.
 
 ## Confirmed
 

@@ -1,0 +1,43 @@
+---
+- name: Validate the Btrfs layout prerequisites
+  ansible.builtin.import_tasks:
+    file: validate.yml
+
+- name: Manage opted-in Btrfs subvolumes
+  when: fedora_btrfs_layout_has_enabled_subvolumes | bool
+  block:
+    - name: Ensure the top-level mount helper directory exists
+      ansible.builtin.file:
+        path: "{{ fedora_btrfs_layout_top_mountpoint }}"
+        state: directory
+        mode: "0700"
+      become: true
+      changed_when: false
+
+    - name: Mount the top-level Btrfs subvolume
+      ansible.posix.mount:
+        path: "{{ fedora_btrfs_layout_top_mountpoint }}"
+        src: "UUID={{ fedora_btrfs_layout_root_uuid }}"
+        fstype: btrfs
+        opts: "subvolid=5,{{ fedora_btrfs_layout_root_opts }}"
+        state: ephemeral
+      become: true
+      changed_when: false
+
+    - name: Manage each opted-in Btrfs subvolume
+      ansible.builtin.include_tasks:
+        file: subvolume.yml
+      loop: "{{ fedora_btrfs_layout_subvolumes | selectattr('enabled', 'truthy', True) | list }}"
+      loop_control:
+        label: "{{ item.name }}"
+  always:
+    - name: Unmount the top-level Btrfs subvolume
+      ansible.posix.mount:
+        path: "{{ fedora_btrfs_layout_top_mountpoint }}"
+        state: unmounted
+      become: true
+      changed_when: false
+
+- name: Verify the resulting Btrfs layout
+  ansible.builtin.import_tasks:
+    file: verify.yml

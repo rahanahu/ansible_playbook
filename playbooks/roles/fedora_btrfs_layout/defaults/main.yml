@@ -1,0 +1,41 @@
+---
+fedora_btrfs_layout_var_log: false
+fedora_btrfs_layout_var_cache: false
+fedora_btrfs_layout_flatpak: false
+fedora_btrfs_layout_docker: false
+fedora_btrfs_layout_containerd: false
+fedora_btrfs_layout_libvirt_images: false
+
+fedora_btrfs_layout_top_mountpoint: /run/ansible-btrfs-top
+
+fedora_btrfs_layout_subvolumes:
+  - name: var-log
+    mountpoint: /var/log
+    enabled: "{{ fedora_btrfs_layout_var_log }}"
+    services: []
+    mode: "0755"
+  - name: var-cache
+    mountpoint: /var/cache
+    enabled: "{{ fedora_btrfs_layout_var_cache }}"
+    services: []
+    mode: "0755"
+  - name: flatpak
+    mountpoint: /var/lib/flatpak
+    enabled: "{{ fedora_btrfs_layout_flatpak }}"
+    services: []
+    mode: "0755"
+  - name: docker
+    mountpoint: /var/lib/docker
+    enabled: "{{ fedora_btrfs_layout_docker }}"
+    services: [docker.socket, docker.service]
+    mode: "0710"
+  - name: containerd
+    mountpoint: /var/lib/containerd
+    enabled: "{{ fedora_btrfs_layout_containerd }}"
+    services: [containerd.service]
+    mode: "0700"
+  - name: libvirt-images
+    mountpoint: /var/lib/libvirt/images
+    enabled: "{{ fedora_btrfs_layout_libvirt_images }}"
+    services: []
+    mode: "0711"

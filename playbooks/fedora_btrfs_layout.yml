@@ -1,0 +1,22 @@
+---
+- name: Manage the Fedora Btrfs subvolume layout
+  hosts: localhost
+  connection: local
+  gather_facts: true
+
+  pre_tasks:
+    - name: Validate the Fedora release
+      ansible.builtin.import_role:
+        name: fedora_preflight
+        tasks_from: release
+      tags:
+        - always
+        - preflight
+
+  tasks:
+    - name: Manage opted-in Btrfs subvolumes
+      ansible.builtin.import_role:
+        name: fedora_btrfs_layout
+      tags:
+        - btrfs
+        - layout

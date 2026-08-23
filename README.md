@@ -330,6 +330,67 @@ and Wireshark/nmap use `fedora_install_network_gui_tools=true`.
 The playbook does not change UEFI settings, upgrade or reboot the operating
 system, select KDE virtual-keyboard settings, run games, or apply GPU tuning.
 
+### Fedora Btrfs subvolume layout
+
+`playbooks/fedora_btrfs_layout.yml` splits selected paths under `/var` out of
+the root Btrfs subvolume into their own top-level subvolumes, so Snapper
+rollbacks of `/` do not also roll back that data. It is a separate,
+dedicated playbook and is not part of `playbooks/fedora_system.yml` or the
+LXC baseline; run it explicitly when you want it.
+
+The role requires `/` to be a Btrfs filesystem and `/home` to already be
+mounted from its own independent subvolume; the validation step fails
+closed before making any change if either prerequisite is not met.
+
+This role declares and maintains a subvolume layout — it is not a migration
+tool. If the target mountpoint already contains data, the role fails without
+deleting, moving, or backing up anything. Inspect and migrate or remove the
+existing data by hand, once, then rerun the playbook; there is no built-in
+rsync/move step or special case that is allowed to delete data automatically.
+
+Everything is opt-in and defaults to `false`:
+
+```bash
+ansible-playbook playbooks/fedora_btrfs_layout.yml \
+  -i localhost, -c local -K \
+  -e fedora_btrfs_layout_var_log=true \
+  -e fedora_btrfs_layout_var_cache=true \
+  -e fedora_btrfs_layout_flatpak=true \
+  -e fedora_btrfs_layout_docker=true \
+  -e fedora_btrfs_layout_containerd=true \
+  -e fedora_btrfs_layout_libvirt_images=true
+```
+
+`fedora_btrfs_layout_var_log` covers `/var/log`, `fedora_btrfs_layout_var_cache`
+covers `/var/cache`, `fedora_btrfs_layout_flatpak` covers `/var/lib/flatpak`,
+`fedora_btrfs_layout_docker` covers `/var/lib/docker` (stopping and restarting
+`docker.socket`/`docker.service` around the remount),
+`fedora_btrfs_layout_containerd` covers `/var/lib/containerd` (stopping and
+restarting `containerd.service`), and `fedora_btrfs_layout_libvirt_images`
+covers `/var/lib/libvirt/images`.
+
+`services` for `/var/log` is intentionally empty, so remounting it does not
+stop and restart `systemd-journald`. That means an already-running
+`systemd-journald` keeps writing to the old, now-hidden inode after the
+remount, and `/var/log/journal` under the new subvolume stays empty until
+the service is restarted. For that reason, only opt `/var/log` into this
+role on a fresh system before journald has accumulated logs on the old
+mountpoint; splitting it out on an already-running host requires a human to
+stop journald and move things over by hand, which this role deliberately
+does not automate.
+
+Snapper only manages the `/` subvolume; it does not gain a configuration for
+any subvolume this role creates, so those paths are not covered by Snapper
+snapshots or rollbacks either — which is the point of splitting them out.
+
+`/boot` is a separate ext4 partition and is never part of the root Btrfs
+subvolume, so it is never covered by a Snapper root snapshot, and rolling
+back `/` is not atomic with the installed kernel. After a rollback, boot the
+kernel version that exists both in `/boot` and under `/usr/lib/modules`; if
+no matching kernel remains in `/boot`, recovering may require booting rescue
+media and reinstalling a kernel package by hand. This is a known limitation
+of Fedora's Btrfs/Snapper setup that `fedora_btrfs_layout` does not solve.
+
 ### Hazkey
 
 Hazkey is deliberately separate from the workstation baseline. After Fcitx5 and

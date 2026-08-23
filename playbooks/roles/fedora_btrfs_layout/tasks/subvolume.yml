@@ -1,0 +1,243 @@
+---
+- name: Check whether the expected subvolume is already mounted at the target
+  ansible.builtin.command:
+    argv:
+      - findmnt
+      - -n
+      - --first-only
+      - -o
+      - FSROOT,UUID
+      - "{{ item.mountpoint }}"
+  register: fedora_btrfs_layout_subvolume_status
+  changed_when: false
+  check_mode: false
+  failed_when: false
+
+- name: Record whether the target mountpoint already matches the expected layout
+  ansible.builtin.set_fact:
+    fedora_btrfs_layout_subvolume_ready: >-
+      {{
+        fedora_btrfs_layout_subvolume_status.rc == 0 and
+        (fedora_btrfs_layout_subvolume_status.stdout.split() | first | default('')) ==
+          ('/' + item.name) and
+        (fedora_btrfs_layout_subvolume_status.stdout.split() | last | default('')) ==
+          fedora_btrfs_layout_root_uuid
+      }}
+  changed_when: false
+
+- name: Check the target mountpoint directory
+  ansible.builtin.stat:
+    path: "{{ item.mountpoint }}"
+  become: true
+  register: fedora_btrfs_layout_subvolume_mountpoint_stat
+  check_mode: false
+  when: not (fedora_btrfs_layout_subvolume_ready | bool)
+
+- name: Check whether the target mountpoint already contains data
+  ansible.builtin.command:
+    argv:
+      - find
+      - "{{ item.mountpoint }}"
+      - -mindepth
+      - "1"
+      - -print
+      - -quit
+  become: true
+  register: fedora_btrfs_layout_subvolume_contents
+  changed_when: false
+  check_mode: false
+  failed_when: fedora_btrfs_layout_subvolume_contents.rc != 0
+  when:
+    - not (fedora_btrfs_layout_subvolume_ready | bool)
+    - fedora_btrfs_layout_subvolume_mountpoint_stat.stat.exists
+
+- name: Refuse to reuse a target mountpoint that already contains data
+  ansible.builtin.assert:
+    that:
+      - fedora_btrfs_layout_subvolume_mountpoint_stat.stat.isdir
+      - (fedora_btrfs_layout_subvolume_contents.stdout | default('')) | trim | length == 0
+    fail_msg: >-
+      {{ item.mountpoint }} is either not empty or not a plain directory. A
+      mountpoint that is not a real directory (for example a symlink) is
+      refused outright, because mounting over it could silently hide
+      existing data behind the resolved target instead of the symlink
+      itself. Automatic migration is intentionally disabled. Inspect and
+      migrate or remove the existing data manually, then run the playbook
+      again.
+  when:
+    - not (fedora_btrfs_layout_subvolume_ready | bool)
+    - fedora_btrfs_layout_subvolume_mountpoint_stat.stat.exists
+
+- name: Create the target mountpoint directory
+  ansible.builtin.file:
+    path: "{{ item.mountpoint }}"
+    state: directory
+    mode: "{{ item.mode | default('0755') }}"
+  become: true
+  when:
+    - not (fedora_btrfs_layout_subvolume_ready | bool)
+    - not fedora_btrfs_layout_subvolume_mountpoint_stat.stat.exists
+
+- name: Check whether the top-level Btrfs subvolume already exists
+  ansible.builtin.command:
+    argv:
+      - btrfs
+      - subvolume
+      - show
+      - "{{ fedora_btrfs_layout_top_mountpoint }}/{{ item.name }}"
+  become: true
+  register: fedora_btrfs_layout_subvolume_show
+  changed_when: false
+  check_mode: false
+  failed_when: false
+  when: not (fedora_btrfs_layout_subvolume_ready | bool)
+
+- name: Create the Btrfs subvolume
+  ansible.builtin.command:
+    argv:
+      - btrfs
+      - subvolume
+      - create
+      - "{{ fedora_btrfs_layout_top_mountpoint }}/{{ item.name }}"
+  become: true
+  changed_when: true
+  when:
+    - not (fedora_btrfs_layout_subvolume_ready | bool)
+    - (fedora_btrfs_layout_subvolume_show.rc | default(1)) != 0
+
+- name: Check for the unit files of services bound to the target mountpoint under /usr/lib/systemd/system
+  ansible.builtin.stat:
+    path: "/usr/lib/systemd/system/{{ unit_name }}"
+  become: true
+  register: fedora_btrfs_layout_service_stat_usr
+  loop: "{{ item.services }}"
+  loop_control:
+    loop_var: unit_name
+    label: "{{ unit_name }}"
+  check_mode: false
+  when: not (fedora_btrfs_layout_subvolume_ready | bool)
+
+- name: Check for the unit files of services bound to the target mountpoint under /etc/systemd/system
+  ansible.builtin.stat:
+    path: "/etc/systemd/system/{{ unit_name }}"
+  become: true
+  register: fedora_btrfs_layout_service_stat_etc
+  loop: "{{ item.services }}"
+  loop_control:
+    loop_var: unit_name
+    label: "{{ unit_name }}"
+  check_mode: false
+  when: not (fedora_btrfs_layout_subvolume_ready | bool)
+
+- name: Record whether each bound service was active before stopping it
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - is-active
+      - "{{ item.services[unit_index] }}"
+  become: true
+  register: fedora_btrfs_layout_service_active_before
+  loop: "{{ range(0, item.services | length) | list }}"
+  loop_control:
+    loop_var: unit_index
+    label: "{{ item.services[unit_index] }}"
+  changed_when: false
+  check_mode: false
+  failed_when: false
+  when:
+    - not (fedora_btrfs_layout_subvolume_ready | bool)
+    - >-
+      fedora_btrfs_layout_service_stat_usr.results[unit_index].stat.exists or
+      fedora_btrfs_layout_service_stat_etc.results[unit_index].stat.exists
+
+- name: Stop services bound to the target mountpoint before remounting it
+  ansible.builtin.systemd_service:
+    name: "{{ item.services[unit_index] }}"
+    state: stopped
+  become: true
+  loop: "{{ range(0, item.services | length) | list }}"
+  loop_control:
+    loop_var: unit_index
+    label: "{{ item.services[unit_index] }}"
+  when:
+    - not (fedora_btrfs_layout_subvolume_ready | bool)
+    - >-
+      fedora_btrfs_layout_service_stat_usr.results[unit_index].stat.exists or
+      fedora_btrfs_layout_service_stat_etc.results[unit_index].stat.exists
+
+- name: Mount, restore permissions, and relabel the target subvolume
+  block:
+    - name: Mount the target subvolume
+      ansible.posix.mount:
+        path: "{{ item.mountpoint }}"
+        src: "UUID={{ fedora_btrfs_layout_root_uuid }}"
+        fstype: btrfs
+        opts: "subvol={{ item.name }},{{ fedora_btrfs_layout_root_opts }}"
+        state: mounted
+        backup: true
+      become: true
+      when: not (fedora_btrfs_layout_subvolume_ready | bool)
+
+    - name: Restore the original mountpoint permissions after mounting the subvolume
+      ansible.builtin.file:
+        path: "{{ item.mountpoint }}"
+        state: directory
+        mode: "{{ fedora_btrfs_layout_subvolume_mountpoint_stat.stat.mode }}"
+        owner: "{{ fedora_btrfs_layout_subvolume_mountpoint_stat.stat.pw_name }}"
+        group: "{{ fedora_btrfs_layout_subvolume_mountpoint_stat.stat.gr_name }}"
+      become: true
+      when:
+        - not (fedora_btrfs_layout_subvolume_ready | bool)
+        - fedora_btrfs_layout_subvolume_mountpoint_stat.stat.exists
+
+    - name: Restore SELinux context on the target mountpoint
+      ansible.builtin.command:
+        argv:
+          - restorecon
+          - -RF
+          - "{{ item.mountpoint }}"
+      become: true
+      changed_when: true
+      when:
+        - not (fedora_btrfs_layout_subvolume_ready | bool)
+        - (ansible_facts['selinux'] | default({})).get('status', 'disabled') == 'enabled'
+  rescue:
+    - name: Restart services that were stopped before the failed subvolume setup
+      ansible.builtin.systemd_service:
+        name: "{{ item.services[active_before.unit_index] }}"
+        state: started
+      become: true
+      loop: "{{ fedora_btrfs_layout_service_active_before.results | default([]) }}"
+      loop_control:
+        loop_var: active_before
+        label: "{{ item.services[active_before.unit_index] | default('n/a') }}"
+      when: (active_before.rc | default(1)) == 0
+
+    - name: Fail after recovering services stopped for the failed subvolume setup
+      ansible.builtin.fail:
+        msg: >-
+          Setting up the {{ item.name }} subvolume at {{ item.mountpoint }}
+          failed. Services that were stopped in order to remount it
+          ({{ item.services | join(', ') if item.services else 'none' }})
+          have been restarted to restore their pre-run active state.
+          ansible.posix.mount rolls back the /etc/fstab entry it wrote for
+          this mountpoint on failure, so /etc/fstab should already reflect
+          the prior state. This role declares and maintains a subvolume
+          layout; it is not a migration tool, so no data or subvolume
+          cleanup was performed. Manually inspect the current mount,
+          permission, and SELinux state of {{ item.mountpoint }} before
+          re-running the playbook. Original failure:
+          {{ ansible_failed_result.msg | default(ansible_failed_result) }}
+
+- name: Restart services that were active before the subvolume was remounted
+  ansible.builtin.systemd_service:
+    name: "{{ item.services[active_before.unit_index] }}"
+    state: started
+  become: true
+  loop: "{{ fedora_btrfs_layout_service_active_before.results | default([]) }}"
+  loop_control:
+    loop_var: active_before
+    label: "{{ item.services[active_before.unit_index] | default('n/a') }}"
+  when:
+    - not (fedora_btrfs_layout_subvolume_ready | bool)
+    - (active_before.rc | default(1)) == 0

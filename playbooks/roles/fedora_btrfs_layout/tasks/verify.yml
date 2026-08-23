@@ -1,0 +1,87 @@
+---
+- name: Explain why layout verification is skipped in check mode
+  ansible.builtin.debug:
+    msg: >-
+      Skipping Btrfs layout verification in check mode because check mode
+      cannot create the subvolumes, mount them, or observe their real
+      findmnt output. A normal run applies the layout before these checks
+      can be meaningfully evaluated.
+  when: ansible_check_mode
+
+- name: Read the resulting mount status of each opted-in subvolume
+  ansible.builtin.command:
+    argv:
+      - findmnt
+      - -n
+      - --first-only
+      - -o
+      - FSTYPE,UUID,FSROOT
+      - "{{ item.mountpoint }}"
+  become: true
+  register: fedora_btrfs_layout_verify_status
+  loop: "{{ fedora_btrfs_layout_subvolumes | selectattr('enabled', 'truthy', True) | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+  changed_when: false
+  check_mode: false
+  failed_when: false
+  when: not ansible_check_mode
+
+- name: Confirm each opted-in subvolume mount matches the expected layout
+  ansible.builtin.assert:
+    that:
+      - result.rc == 0
+      - ((result.stdout.split() + ['', '', ''])[0] | default('')) == 'btrfs'
+      - >-
+        ((result.stdout.split() + ['', '', ''])[1] | default('')) ==
+        fedora_btrfs_layout_root_uuid
+      - >-
+        ((result.stdout.split() + ['', '', ''])[2] | default('')) ==
+        ('/' + result.item.name)
+    fail_msg: >-
+      {{ result.item.mountpoint }} is not mounted as the expected Btrfs
+      subvolume (FSTYPE=btrfs, UUID={{ fedora_btrfs_layout_root_uuid }},
+      FSROOT=/{{ result.item.name }}).
+  loop: "{{ fedora_btrfs_layout_verify_status.results | default([]) }}"
+  loop_control:
+    loop_var: result
+    label: "{{ result.item.name }}"
+  when: not ansible_check_mode
+
+- name: Verify the resulting /etc/fstab
+  ansible.builtin.command:
+    argv:
+      - findmnt
+      - --verify
+  register: fedora_btrfs_layout_fstab_verify
+  changed_when: false
+  check_mode: false
+  failed_when: false
+  when: not ansible_check_mode
+
+- name: Warn about pre-existing /etc/fstab problems unrelated to this role
+  ansible.builtin.debug:
+    msg: >-
+      findmnt --verify already reported problems with /etc/fstab before this
+      role made any changes, so any failure here is not attributed to
+      fedora_btrfs_layout:
+      {{ fedora_btrfs_layout_fstab_verify_before.stdout }}
+      {{ fedora_btrfs_layout_fstab_verify_before.stderr }}
+  when:
+    - not ansible_check_mode
+    - (fedora_btrfs_layout_fstab_verify_before.rc | default(1)) != 0
+
+- name: Require a healthy /etc/fstab after applying the layout
+  ansible.builtin.assert:
+    that:
+      - fedora_btrfs_layout_fstab_verify.rc == 0
+    fail_msg: >-
+      findmnt --verify reported new problems with /etc/fstab after applying
+      the Btrfs subvolume layout that were not present before this role ran.
+      This fstab may be broken and could prevent the system from booting;
+      review it before rebooting.
+      {{ fedora_btrfs_layout_fstab_verify.stdout }}
+      {{ fedora_btrfs_layout_fstab_verify.stderr }}
+  when:
+    - not ansible_check_mode
+    - (fedora_btrfs_layout_fstab_verify_before.rc | default(1)) == 0
