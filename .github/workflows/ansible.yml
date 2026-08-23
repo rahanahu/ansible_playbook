@@ -3,7 +3,7 @@ name: ansible
 
 "on":
   push:
-    branches: [main, zsh]
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
