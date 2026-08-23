@@ -7,7 +7,7 @@
       - zoxide
     state: present
   become: true
-  when: ansible_distribution == 'Fedora'
+  when: ansible_facts['distribution'] == 'Fedora'
   tags:
     - system
     - zsh
@@ -18,9 +18,8 @@
     state: present
   become: true
   when:
-    - ansible_distribution == 'Fedora'
+    - ansible_facts['distribution'] == 'Fedora'
     - zsh_install_direnv_package | bool
-    - zsh_target_user != 'root'
   tags:
     - system
     - zsh
@@ -31,9 +30,8 @@
     state: present
   become: true
   when:
-    - ansible_distribution == 'Fedora'
+    - ansible_facts['distribution'] == 'Fedora'
     - zsh_install_desktop_packages | bool
-    - zsh_target_user != 'root'
   tags:
     - system
     - zsh

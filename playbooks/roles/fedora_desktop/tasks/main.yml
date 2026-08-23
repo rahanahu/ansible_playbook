@@ -30,6 +30,20 @@
     - system
     - desktop
 
+- name: Check whether Fedora VA-API drivers are installed
+  ansible.builtin.command:
+    argv:
+      - rpm
+      - -q
+      - mesa-va-drivers
+  register: fedora_vaapi_fedora_package
+  changed_when: false
+  failed_when: false
+  when: fedora_install_desktop_essentials | bool
+  tags:
+    - system
+    - desktop
+
 - name: Check whether freeworld VA-API drivers are installed
   ansible.builtin.command:
     argv:
@@ -52,10 +66,23 @@
       - -y
       - mesa-va-drivers
       - mesa-va-drivers-freeworld
-      - --allowerasing
   become: true
   when:
     - fedora_install_desktop_essentials | bool
+    - fedora_vaapi_fedora_package.rc == 0
+    - fedora_vaapi_freeworld_package.rc != 0
+  tags:
+    - system
+    - desktop
+
+- name: Install freeworld VA-API drivers when no Fedora variant is installed
+  ansible.builtin.dnf:
+    name: mesa-va-drivers-freeworld
+    state: present
+  become: true
+  when:
+    - fedora_install_desktop_essentials | bool
+    - fedora_vaapi_fedora_package.rc != 0
     - fedora_vaapi_freeworld_package.rc != 0
   tags:
     - system
