@@ -3,6 +3,7 @@ name: repo-explorer
 description: Fast read-only repository exploration for broad discovery before design.
 tools: Read, Grep, Glob
 model: haiku
+color: cyan
 effort: medium
 ---
 
