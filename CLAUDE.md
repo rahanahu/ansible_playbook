@@ -1,106 +1,42 @@
 # Project instructions
 
-This repository uses a coordinated Claude Code agent workflow.
+Use the smallest Claude Code workflow appropriate to the task.
 
-## Main workflow
+## Agent workflow
 
-For non-trivial work:
+The main Claude session owns requirement interpretation, ordinary design decisions,
+delegation, synthesis, and the final user-facing report.
 
-```text
-orchestrator
-  -> architect
-  -> implementer
-  -> reviewer
-  -> implementer (only for real fixes)
-  -> verifier
-```
+For normal non-trivial changes:
 
-The parent/orchestrator owns scope, architecture decisions, final review, and the final user-facing report.
+1. Use `repo-explorer` only when broad repository discovery is necessary.
+2. The main session decides the design and gives `implementer` a bounded brief.
+3. `implementer` makes the smallest coherent change and runs fast local checks.
+4. The main session inspects the resulting diff.
+5. Use `reviewer` for independent semantic review.
+6. Return genuine defects to `implementer` for focused fixes.
+7. Rely on deterministic CI as the final automated static gate.
 
-## Critical subagent-delivery rule
+For trivial changes, skip agents that add no value. Do not invoke agents merely
+because they exist.
 
-Read-only/plan agents must return their work through their final response.
+Do not ask multiple agents to repeat the same repository-wide search. Pass exact
+paths, constraints, and already-measured facts forward instead. Do not assign
+multiple writers to the same files concurrently.
 
-Do not ask `architect` or `reviewer` to persist their report to repository files.
+A subagent's final response is its deliverable. Do not ask read-only agents to
+persist reports to repository files.
 
-After invoking `architect`:
+## Project rules
 
-1. Wait for the architect's final response.
-2. Do not continue until a usable architecture result has been received.
-3. The architect's final response is the deliverable.
-4. Restate/summarize the architecture result in the parent conversation before implementation begins.
-5. If the architect returns no usable final report, stop and report the failure.
-6. Do not silently retry the same architect task more than once.
-7. Never switch to file-writing as a workaround for a plan/read-only agent.
+Repository-specific policy is split under `.claude/rules/`:
 
-The same principle applies to reviewer/verifier reports: receive them in the parent session and inspect the actual diff/output yourself.
-
-### Why a plan agent returns nothing
-
-If a plan agent comes back with no final report, the cause is almost
-certainly an exhausted turn budget, not its read-only permission mode. Two
-`architect` runs were lost this way: both transcripts end on a tool result,
-with no final message ever written, after hitting a `maxTurns` of 24. The
-`reviewer` agent runs in the same permission mode and reports fine.
-
-So do not diagnose it as a delivery problem and do not reach for
-file-writing to work around it. Give the agent room to finish, and keep its
-own instructions telling it to stop investigating and write.
-
-### Calling a subagent
-
-- Hand over the facts already measured. Re-deriving them burns the budget
-  that the actual analysis needs.
-- Make the prompt self-contained. A subagent cannot see this conversation.
-- Bound the requested output when a long report is not needed. Reviewer and
-  verifier both return reliably when asked for a few hundred words.
-- Three iterations on the same task is the ceiling. Past that, the framing
-  is wrong; go back to the plan rather than asking again.
-
-## Git operations
-
-Never commit, push, merge, rebase, reset, or force-update refs unless the user explicitly requests that Git operation.
-
-## Repository-specific contracts
-
-- `target_user` and `target_home` are repository-wide public contracts.
-- Do not rename repository-wide public variables merely to satisfy role-local lint prefix rules.
-- Preserve Workstation vs LXC responsibility boundaries.
-- Preserve latest-vs-pinned tool update policy.
-- Do not mutate persistent state merely to make check mode pass.
-- Do not blindly overwrite existing Fcitx configuration.
-- Root-executed installer scripts must not be staged in target-user-writable locations.
-
-## Lint policy
-
-Allowed narrow global exception:
-
-```yaml
-skip_list:
-  - var-naming[no-role-prefix]
-```
-
-Do not globally disable `no-changed-when`.
-Existing reviewed pre-CI debt may be grandfathered via line-specific `.ansible-lint-ignore`; new findings should normally be fixed.
+- `ansible.md` -- Ansible contracts, idempotency, check mode, ownership, and lint policy.
+- `git.md` -- Git authority and publication rules.
+- `validation.md` -- What local checks and CI do and do not prove.
 
 ## Tracking policy
 
-Track project-level Claude configuration in Git:
-
-```text
-CLAUDE.md
-.claude/settings.json
-.claude/agents/orchestrator.md
-.claude/agents/architect.md
-.claude/agents/implementer.md
-.claude/agents/reviewer.md
-.claude/agents/verifier.md
-```
-
-Do not track user/machine-local state:
-
-```text
-.claude/settings.local.json
-.claude/agent-memory-local/
-temporary logs/caches
-```
+Track project-level Claude configuration in Git. Keep user/machine-local state,
+including `.claude/settings.local.json`, `.claude/agent-memory-local/`, temporary
+logs, and caches untracked.
