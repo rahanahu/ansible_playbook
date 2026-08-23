@@ -35,6 +35,28 @@ After invoking `architect`:
 
 The same principle applies to reviewer/verifier reports: receive them in the parent session and inspect the actual diff/output yourself.
 
+### Why a plan agent returns nothing
+
+If a plan agent comes back with no final report, the cause is almost
+certainly an exhausted turn budget, not its read-only permission mode. Two
+`architect` runs were lost this way: both transcripts end on a tool result,
+with no final message ever written, after hitting a `maxTurns` of 24. The
+`reviewer` agent runs in the same permission mode and reports fine.
+
+So do not diagnose it as a delivery problem and do not reach for
+file-writing to work around it. Give the agent room to finish, and keep its
+own instructions telling it to stop investigating and write.
+
+### Calling a subagent
+
+- Hand over the facts already measured. Re-deriving them burns the budget
+  that the actual analysis needs.
+- Make the prompt self-contained. A subagent cannot see this conversation.
+- Bound the requested output when a long report is not needed. Reviewer and
+  verifier both return reliably when asked for a few hundred words.
+- Three iterations on the same task is the ceiling. Past that, the framing
+  is wrong; go back to the plan rather than asking again.
+
 ## Git operations
 
 Never commit, push, merge, rebase, reset, or force-update refs unless the user explicitly requests that Git operation.

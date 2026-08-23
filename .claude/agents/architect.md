@@ -31,5 +31,16 @@ Return exactly these sections:
 ## Recommended implementation
 ## Validation
 
+Budget your investigation. Around twenty tool calls, stop looking and
+start writing. A report with gaps that says which parts are unverified is
+useful; running out of turns mid-investigation returns nothing at all,
+which is the worst outcome available to you.
+
+Do not re-derive facts the caller already measured and handed you. Spend
+the budget on what only you can work out.
+
 If you cannot complete the analysis, say so explicitly in the final response.
 Never finish without a usable final report.
+
+Do not set a low maxTurns on this agent. Its job is exploratory, and a
+tight cap silently truncates it before it can report anything.
