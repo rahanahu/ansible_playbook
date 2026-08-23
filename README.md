@@ -337,6 +337,66 @@ ansible-playbook playbooks/hazkey.yml \
   -e hazkey_enable_vulkan=true
 ```
 
+Fedora's `swift-lang` currently ships no static Swift standard library, so the
+role builds `hazkey-server` linked dynamically against `swift-lang-runtime`.
+This is the default and it works. It does mean the binary depends on that
+runtime staying installed and version-compatible, and Swift on Linux offers no
+ABI stability guarantee across runtime updates. The role prints a message when
+it falls back to dynamic linking.
+
+An official swift.org toolchain does ship a static standard library. It can be
+downloaded and extracted separately, for example into `~/swift-toolchain`
+(about a 1 GB download, about 3.4 GB extracted):
+
+```bash
+mkdir -p ~/swift-toolchain
+curl -L -o /tmp/swift-toolchain.tar.gz \
+  https://download.swift.org/swift-6.3.3-release/fedora41/swift-6.3.3-RELEASE/swift-6.3.3-RELEASE-fedora41.tar.gz
+tar -xzf /tmp/swift-toolchain.tar.gz \
+  --strip-components=1 -C ~/swift-toolchain
+```
+
+Point the role at it with `hazkey_swift_toolchain_path`:
+
+```bash
+ansible-playbook playbooks/hazkey.yml \
+  -i localhost, -c local -K \
+  -e hazkey_swift_toolchain_path=/home/<user>/swift-toolchain
+```
+
+For regular use this belongs in inventory or `group_vars` rather than being
+retyped on every run. The role's `defaults/main.yml` is the wrong place for it
+because the path is machine-specific.
+
+`hazkey_swift_toolchain_path` is the toolchain root, not the `usr/bin`
+directory inside it; the role appends `usr/bin` itself. The expected layout
+is:
+
+```text
+<root>/usr/bin/swiftc
+<root>/usr/lib/swift/
+<root>/usr/lib/swift_static/
+```
+
+A wrong path does not error; the role silently keeps using the system Swift
+and links dynamically. Confirm the toolchain actually took effect with:
+
+```bash
+ansible-playbook playbooks/hazkey.yml -i localhost, -c local --check -v \
+  -e hazkey_swift_toolchain_path=/home/<user>/swift-toolchain \
+  | grep -o 'STATIC_STDLIB=[A-Z]*'
+```
+
+`STATIC_STDLIB=ON` means the toolchain was picked up and `hazkey-server`
+will be linked statically. `STATIC_STDLIB=OFF` means the system Swift is
+still being used, so the path is wrong or the toolchain has no static
+standard library. Changing the toolchain path changes the build signature,
+so the next run rebuilds once; that is expected.
+
+`hazkey_static_swift_stdlib` overrides the auto-detection and is rarely
+needed. Forcing it to `true` without a static standard library available
+makes the build fail.
+
 The Hazkey role does not fetch or cherry-pick upstream PR #25, resolve conflicts,
 or automate KDE/Fcitx5 UI and input validation.
 

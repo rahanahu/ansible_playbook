@@ -15,3 +15,28 @@ hazkey_update_repository: false
 hazkey_enable_vulkan: false
 hazkey_force_rebuild: false
 hazkey_install_prefix: /usr
+
+# Static Swift linking is used when the toolchain ships a static standard
+# library. Fedora's swift-lang stopped packaging lib/swift_static/ when its
+# spec moved from a blanket install to an explicit file list, so the build
+# falls back to dynamic linking there. Set this explicitly to override the
+# detection.
+# hazkey_static_swift_stdlib: true
+
+# Point this at the root of an official swift.org toolchain (the directory
+# containing usr/bin/swiftc) to build with it instead of the distribution's
+# Swift. Fedora's swift-lang package currently ships no static standard
+# library, so an official toolchain is the way to get a statically linked
+# hazkey-server. Empty means use whatever swiftc is already on PATH.
+hazkey_swift_toolchain_path: ""
+
+# Installing the fcitx5 addon into a container's /usr cannot reach the host's
+# fcitx5, so the install step is rejected there by default. Building inside a
+# container is fine; only the install has to happen on the host.
+hazkey_container_virtualization_types:
+  - container
+  - containerd
+  - docker
+  - lxc
+  - podman
+hazkey_allow_container_install: false
