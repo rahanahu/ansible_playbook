@@ -39,19 +39,11 @@ README.md under "Tool update policy".
   `/.snapshots` subvolume left without a configuration file). The two
   guard assertions that detect these states have passed on a healthy host,
   but neither has been triggered against a genuinely inconsistent one.
-- `fedora_btrfs_layout` has never been run on real hardware or in a VM, not
-  even with `--check`.
-- Whether the fstab entries `fedora_btrfs_layout` generates actually allow
-  the system to boot has not been verified.
 - Whether the role fails closed as intended when a target mountpoint is
   non-empty, including the case where the mountpoint is a symlink, has not
   been verified.
 - Whether stopping and restarting the Docker and containerd units around
   the remount works correctly has not been verified.
-- Whether the post-mount permission restoration and SELinux relabeling
-  produce correct results has not been verified.
-- Whether a second run of `fedora_btrfs_layout` reports `changed=0` has not
-  been verified.
 - Whether services stopped on a failed subvolume setup are actually
   restarted by the `rescue` block added around the mount/permission/SELinux
   steps in `tasks/subvolume.yml` has not been verified.
@@ -99,3 +91,29 @@ README.md under "Tool update policy".
   completes with `changed=0` and no undefined-variable failures. Note that
   it skips the retention and timer tasks, because they are gated on a
   configuration that check mode cannot create.
+- `fedora_btrfs_layout` was run on real Fedora 44 hardware with only
+  `fedora_btrfs_layout_libvirt_images=true`. `/var/lib/libvirt/images` was
+  created as a top-level subvolume (ID 260, top level 5) and mounted with
+  the same UUID as `/` and `FSROOT` `/libvirt-images`.
+- The generated `/etc/fstab` line for that mount is
+  `subvol=libvirt-images,compress=zstd:1,x-systemd.device-timeout=0`, with
+  no kernel-added runtime-only mount options mixed into it.
+- `findmnt --verify` reported 0 parse errors and 0 errors against the
+  resulting `/etc/fstab`.
+- The SELinux label on `/var/lib/libvirt/images` came out as `virt_image_t`
+  after the run, confirming `restorecon` relabeled it correctly.
+- The generated `/etc/fstab` entry survives a reboot. After restarting the
+  host, `/var/lib/libvirt/images` is mounted again from `/etc/fstab`: the
+  generated `var-lib-libvirt-images.mount` unit reports `active` with
+  `SourcePath=/etc/fstab`, `FSROOT` `/libvirt-images` and `subvolid=260`.
+- The declared mode `0711` and the `virt_image_t` label both persist across
+  that reboot.
+- A second run of `fedora_btrfs_layout` with the same options reports
+  `changed=0`, including after the permission-convergence and the
+  handler-based daemon-reload were added. The convergence task reports no
+  change against an already-correct mountpoint, and the `flush_handlers`
+  step is a no-op when nothing notified it.
+- The permission-convergence task also corrects drift rather than only
+  holding a correct value: with `/var/lib/libvirt/images` manually set to
+  `0755`, a run reports `changed=1` and leaves it back at its declared
+  `0711`.

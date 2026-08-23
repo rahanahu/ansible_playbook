@@ -379,6 +379,14 @@ mountpoint; splitting it out on an already-running host requires a human to
 stop journald and move things over by hand, which this role deliberately
 does not automate.
 
+Each subvolume's `mode` (`docker` `0710`, `containerd` `0700`,
+`libvirt-images` `0711`, and `var-log`/`var-cache`/`flatpak` `0755`) is a
+declared value, and the role converges the mountpoint to that value on every
+run, after the subvolume is mounted. If the mountpoint previously had a
+different permission mode set on it by hand, that mode is overwritten by the
+declared value. Ownership (`owner`/`group`) is only managed when an item
+explicitly declares it; by default the role leaves ownership unchanged.
+
 Snapper only manages the `/` subvolume; it does not gain a configuration for
 any subvolume this role creates, so those paths are not covered by Snapper
 snapshots or rollbacks either — which is the point of splitting them out.

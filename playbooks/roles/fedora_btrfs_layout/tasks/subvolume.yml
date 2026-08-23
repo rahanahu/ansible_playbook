@@ -72,7 +72,7 @@
   ansible.builtin.file:
     path: "{{ item.mountpoint }}"
     state: directory
-    mode: "{{ item.mode | default('0755') }}"
+    mode: "0755"
   become: true
   when:
     - not (fedora_btrfs_layout_subvolume_ready | bool)
@@ -177,18 +177,19 @@
         backup: true
       become: true
       when: not (fedora_btrfs_layout_subvolume_ready | bool)
+      notify: Reload systemd after the Btrfs layout modifies fstab
 
-    - name: Restore the original mountpoint permissions after mounting the subvolume
+    - name: Apply the pending systemd reload before continuing
+      ansible.builtin.meta: flush_handlers
+
+    - name: Converge the target mountpoint to its declared permissions
       ansible.builtin.file:
         path: "{{ item.mountpoint }}"
         state: directory
-        mode: "{{ fedora_btrfs_layout_subvolume_mountpoint_stat.stat.mode }}"
-        owner: "{{ fedora_btrfs_layout_subvolume_mountpoint_stat.stat.pw_name }}"
-        group: "{{ fedora_btrfs_layout_subvolume_mountpoint_stat.stat.gr_name }}"
+        mode: "{{ item.mode | default('0755') }}"
+        owner: "{{ item.owner | default(omit) }}"
+        group: "{{ item.group | default(omit) }}"
       become: true
-      when:
-        - not (fedora_btrfs_layout_subvolume_ready | bool)
-        - fedora_btrfs_layout_subvolume_mountpoint_stat.stat.exists
 
     - name: Restore SELinux context on the target mountpoint
       ansible.builtin.command:
