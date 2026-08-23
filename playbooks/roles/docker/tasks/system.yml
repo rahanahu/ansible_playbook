@@ -54,6 +54,14 @@
         state: present
       become: true
 
+    - name: Check for the Docker apt repository file
+      ansible.builtin.stat:
+        path: /etc/apt/sources.list.d/docker.list
+      become: true
+      register: docker_debian_repo_stat
+      changed_when: false
+      check_mode: false
+
     - name: Install Docker Engine packages
       ansible.builtin.apt:
         name:
@@ -65,6 +73,17 @@
         state: present
         update_cache: true
       become: true
+      when: docker_debian_repo_stat.stat.exists or not ansible_check_mode
+
+    - name: Explain why Docker packages were skipped in check mode
+      ansible.builtin.debug:
+        msg: >-
+          Docker packages cannot be evaluated in check mode because the
+          Docker repository is not installed yet. A normal run adds the
+          repository before resolving the docker-ce packages.
+      when:
+        - ansible_check_mode
+        - not docker_debian_repo_stat.stat.exists
 
 - name: Install Docker Engine on Fedora
   when: ansible_facts['distribution'] == 'Fedora'
@@ -84,6 +103,14 @@
         mode: "0644"
       become: true
 
+    - name: Check for the Docker Fedora repository file
+      ansible.builtin.stat:
+        path: /etc/yum.repos.d/docker-ce.repo
+      become: true
+      register: docker_fedora_repo_stat
+      changed_when: false
+      check_mode: false
+
     - name: Install Docker Engine packages
       ansible.builtin.dnf:
         name:
@@ -94,6 +121,17 @@
           - docker-compose-plugin
         state: present
       become: true
+      when: docker_fedora_repo_stat.stat.exists or not ansible_check_mode
+
+    - name: Explain why Docker packages were skipped in check mode
+      ansible.builtin.debug:
+        msg: >-
+          Docker packages cannot be evaluated in check mode because the
+          Docker repository is not installed yet. A normal run adds the
+          repository before resolving the docker-ce packages.
+      when:
+        - ansible_check_mode
+        - not docker_fedora_repo_stat.stat.exists
 
 - name: Ensure docker group exists
   ansible.builtin.group:
@@ -104,6 +142,14 @@
     ansible_facts['os_family'] == 'Debian' or
     ansible_facts['distribution'] == 'Fedora'
 
+- name: Check for the Docker binary
+  ansible.builtin.stat:
+    path: /usr/bin/docker
+  become: true
+  register: docker_binary_stat
+  changed_when: false
+  check_mode: false
+
 - name: Ensure docker service is enabled and running
   ansible.builtin.service:
     name: docker
@@ -111,5 +157,20 @@
     state: started
   become: true
   when: >-
-    ansible_facts['os_family'] == 'Debian' or
-    ansible_facts['distribution'] == 'Fedora'
+    (ansible_facts['os_family'] == 'Debian' or
+    ansible_facts['distribution'] == 'Fedora') and
+    (docker_binary_stat.stat.exists or not ansible_check_mode)
+
+- name: Explain why the Docker service was skipped in check mode
+  ansible.builtin.debug:
+    msg: >-
+      Docker service state cannot be evaluated in check mode because the
+      Docker packages are not installed yet on this host, so the docker
+      systemd unit does not exist. A normal run installs the packages
+      before enabling and starting the service.
+  when:
+    - ansible_check_mode
+    - not docker_binary_stat.stat.exists
+    - >-
+      ansible_facts['os_family'] == 'Debian' or
+      ansible_facts['distribution'] == 'Fedora'

@@ -161,6 +161,7 @@
   become: "{{ ansible_facts['user_id'] != zsh_target_user }}"
   become_user: "{{ zsh_target_user }}"
   register: fzf_bin
+  when: not (ansible_check_mode and not fzf_checkout_stat.stat.exists)
   tags:
     - user
 
@@ -175,7 +176,9 @@
   become_user: "{{ zsh_target_user }}"
   environment:
     HOME: "{{ zsh_target_home }}"
-  when: fzf_clone.changed or not fzf_bin.stat.exists
+  when:
+    - not (ansible_check_mode and not fzf_checkout_stat.stat.exists)
+    - fzf_clone.changed or not fzf_bin.stat.exists
   tags:
     - user
 
@@ -187,6 +190,7 @@
     force: true
   become: "{{ ansible_facts['user_id'] != zsh_target_user }}"
   become_user: "{{ zsh_target_user }}"
+  when: not (ansible_check_mode and not fzf_checkout_stat.stat.exists)
   tags:
     - user
 
@@ -370,6 +374,16 @@
   tags:
     - user
 
+- name: Check for the target user's Ansible cache directory
+  ansible.builtin.stat:
+    path: "{{ zsh_target_home }}/.cache/ansible"
+  become: "{{ ansible_facts['user_id'] != zsh_target_user }}"
+  become_user: "{{ zsh_target_user }}"
+  register: zsh_cache_dir_stat
+  when: ansible_facts['system'] == 'Linux'
+  tags:
+    - user
+
 - name: Download pinned Sheldon installer
   ansible.builtin.get_url:
     url: >-
@@ -384,6 +398,7 @@
     - ansible_facts['system'] == 'Linux'
     - sheldon_version_effective | length > 0
     - sheldon_version_effective not in (sheldon_version_check.stdout | default(''))
+    - not (ansible_check_mode and not zsh_cache_dir_stat.stat.exists)
   tags:
     - user
 
