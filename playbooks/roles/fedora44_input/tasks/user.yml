@@ -1,0 +1,17 @@
+---
+- name: Create the target user's environment directory
+  ansible.builtin.file:
+    path: "{{ target_home }}/.config/environment.d"
+    state: directory
+    mode: "0755"
+  become: "{{ ansible_user_id != target_user }}"
+  become_user: "{{ target_user }}"
+
+- name: Configure XMODIFIERS for Fcitx5 and XWayland
+  ansible.builtin.copy:
+    dest: "{{ target_home }}/.config/environment.d/90-fcitx5.conf"
+    content: |
+      XMODIFIERS=@im=fcitx
+    mode: "0644"
+  become: "{{ ansible_user_id != target_user }}"
+  become_user: "{{ target_user }}"

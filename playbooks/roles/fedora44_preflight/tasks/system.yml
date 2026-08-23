@@ -1,0 +1,41 @@
+---
+- name: Require the intended Fedora release
+  ansible.builtin.assert:
+    that:
+      - ansible_distribution == 'Fedora'
+      - >-
+        fedora44_allow_other_release | bool or
+        ansible_distribution_major_version == fedora44_required_release
+    fail_msg: >-
+      This playbook targets Fedora {{ fedora44_required_release }}; detected
+      {{ ansible_distribution }} {{ ansible_distribution_major_version }}.
+
+- name: Read SELinux enforcement mode
+  ansible.builtin.command:
+    argv:
+      - getenforce
+  register: fedora44_selinux_mode
+  changed_when: false
+  failed_when: false
+  when: fedora44_require_security_baseline | bool
+
+- name: Read firewalld state
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - is-active
+      - firewalld
+  register: fedora44_firewalld_state
+  changed_when: false
+  failed_when: false
+  when: fedora44_require_security_baseline | bool
+
+- name: Require SELinux and firewalld baseline
+  ansible.builtin.assert:
+    that:
+      - fedora44_selinux_mode.stdout | trim == 'Enforcing'
+      - fedora44_firewalld_state.stdout | trim == 'active'
+    fail_msg: >-
+      SELinux must be Enforcing and firewalld must be active. The playbook does
+      not enable or weaken either security control automatically.
+  when: fedora44_require_security_baseline | bool

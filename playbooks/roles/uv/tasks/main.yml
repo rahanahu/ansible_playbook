@@ -1,16 +1,58 @@
-- name: Check if uv is installed
-  command: which uv
+---
+- name: Require the uv target user
+  ansible.builtin.assert:
+    that:
+      - target_user is defined
+      - target_home is defined
+    fail_msg: Resolve target_user and target_home before the uv role.
+  tags:
+    - user
+
+- name: Check whether uv is installed for the workstation user
+  ansible.builtin.command:
+    argv:
+      - "{{ target_home }}/.local/bin/uv"
+      - --version
+  become: "{{ ansible_user_id != target_user }}"
+  become_user: "{{ target_user }}"
+  environment:
+    HOME: "{{ target_home }}"
   register: uv_check
   changed_when: false
   failed_when: false
+  tags:
+    - user
 
-- name: Download uv install script
-  get_url:
-    url: https://astral.sh/uv/install.sh
-    dest: /tmp/uv_install.sh
+- name: Create the workstation user Ansible cache directory
+  ansible.builtin.file:
+    path: "{{ target_home }}/.cache/ansible"
+    state: directory
     mode: "0700"
-  when: uv_check.rc is defined and uv_check.rc != 0
+  become: "{{ ansible_user_id != target_user }}"
+  become_user: "{{ target_user }}"
+  when: uv_check.rc != 0
+  tags:
+    - user
 
-- name: Run uv install script
-  command: /tmp/uv_install.sh
-  when: uv_check.rc is defined and uv_check.rc != 0
+- name: Download the uv installer for the workstation user
+  ansible.builtin.get_url:
+    url: https://astral.sh/uv/install.sh
+    dest: "{{ target_home }}/.cache/ansible/uv-install.sh"
+    mode: "0700"
+  become: "{{ ansible_user_id != target_user }}"
+  become_user: "{{ target_user }}"
+  when: uv_check.rc != 0
+  tags:
+    - user
+
+- name: Install uv for the workstation user
+  ansible.builtin.command:
+    argv:
+      - "{{ target_home }}/.cache/ansible/uv-install.sh"
+  become: "{{ ansible_user_id != target_user }}"
+  become_user: "{{ target_user }}"
+  environment:
+    HOME: "{{ target_home }}"
+  when: uv_check.rc != 0
+  tags:
+    - user

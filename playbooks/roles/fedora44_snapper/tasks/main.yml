@@ -9,6 +9,9 @@
       - /
   register: fedora44_root_filesystem
   changed_when: false
+  when: >-
+    fedora44_snapper_create_root_config | bool or
+    fedora44_snapper_create_baseline_snapshot | bool
 
 - name: Require Btrfs for Snapper
   ansible.builtin.assert:
@@ -17,6 +20,9 @@
     fail_msg: >-
       The root filesystem is not Btrfs. The role will not modify the filesystem
       or create a replacement subvolume layout.
+  when: >-
+    fedora44_snapper_create_root_config | bool or
+    fedora44_snapper_create_baseline_snapshot | bool
 
 - name: Install Snapper packages
   ansible.builtin.dnf:
@@ -25,6 +31,10 @@
       - btrfs-assistant
     state: present
   become: true
+  when: >-
+    fedora44_install_snapper | bool or
+    fedora44_snapper_create_root_config | bool or
+    fedora44_snapper_create_baseline_snapshot | bool
 
 - name: Check for the root Snapper configuration
   ansible.builtin.command:
@@ -37,6 +47,9 @@
   register: fedora44_snapper_root_config
   changed_when: false
   failed_when: false
+  when: >-
+    fedora44_snapper_create_root_config | bool or
+    fedora44_snapper_create_baseline_snapshot | bool
 
 - name: Create the root Snapper configuration when explicitly requested
   ansible.builtin.command:

@@ -3,7 +3,7 @@ hazkey_repository: https://github.com/yosagi/hazkey.git
 hazkey_version: dev
 hazkey_required_fedora_release: "44"
 hazkey_allow_other_fedora_release: false
-hazkey_source_root: "{{ ansible_user_dir }}/src"
+hazkey_source_root: "{{ target_home }}/src"
 hazkey_source_directory: "{{ hazkey_source_root }}/hazkey"
 hazkey_commit_record_file: "{{ hazkey_source_root }}/hazkey-yosagi-dev.commit"
 

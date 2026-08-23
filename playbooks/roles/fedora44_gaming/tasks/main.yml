@@ -1,83 +1,18 @@
 ---
-- name: Install RPM Fusion release packages
-  ansible.builtin.dnf:
-    name:
-      - >-
-        https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-{{
-        ansible_distribution_major_version }}.noarch.rpm
-      - >-
-        https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-{{
-        ansible_distribution_major_version }}.noarch.rpm
-    state: present
-  become: true
+- name: Configure gaming system packages
+  ansible.builtin.include_tasks:
+    file: system.yml
+    apply:
+      tags:
+        - system
+  tags:
+    - system
 
-- name: Install Steam and MangoHud baseline
-  ansible.builtin.dnf:
-    name:
-      - steam
-      - steam-devices
-      - mangohud
-    state: present
-  become: true
-
-- name: Install optional gaming troubleshooting packages
-  ansible.builtin.dnf:
-    name:
-      - gamemode
-      - gamescope
-      - protontricks
-    state: present
-  become: true
-  when: fedora44_install_gaming_extras | bool
-
-- name: Install Flatpak for ProtonPlus
-  ansible.builtin.dnf:
-    name: flatpak
-    state: present
-  become: true
-  when: fedora44_install_protonplus | bool
-
-- name: Configure Flathub for the current user
-  community.general.flatpak_remote:
-    name: flathub
-    state: present
-    flatpakrepo_url: https://flathub.org/repo/flathub.flatpakrepo
-    method: user
-  when: fedora44_install_protonplus | bool
-
-- name: Install ProtonPlus for the current user
-  community.general.flatpak:
-    name: com.vysp3r.ProtonPlus
-    state: present
-    remote: flathub
-    method: user
-  when: fedora44_install_protonplus | bool
-
-- name: Install optional workstation CLI packages
-  ansible.builtin.dnf:
-    name:
-      - btop
-      - ripgrep
-      - fd-find
-      - bat
-      - jq
-      - tealdeer
-      - tmux
-      - hyperfine
-      - entr
-      - strace
-      - perf
-      - sysstat
-      - gdb
-      - valgrind
-      - lsof
-      - lm_sensors
-      - smartmontools
-      - nvme-cli
-      - ethtool
-      - tcpdump
-      - mtr
-      - bind-utils
-    state: present
-  become: true
-  when: fedora44_install_cli_extras | bool
+- name: Configure target-user gaming tools
+  ansible.builtin.include_tasks:
+    file: user.yml
+    apply:
+      tags:
+        - user
+  tags:
+    - user

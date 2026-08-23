@@ -1,0 +1,3 @@
+---
+fedora44_install_cli_tools: true
+fedora44_install_heavy_debug_tools: true

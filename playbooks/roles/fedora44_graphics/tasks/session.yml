@@ -1,0 +1,23 @@
+---
+- name: Read OpenGL renderer information in the workstation session
+  ansible.builtin.command:
+    argv:
+      - glxinfo
+      - -B
+  register: fedora44_glxinfo
+  changed_when: false
+  failed_when: false
+  when:
+    - ansible_user_id == target_user
+    - lookup('ansible.builtin.env', 'DISPLAY') | length > 0
+
+- name: Require a hardware OpenGL renderer in the workstation session
+  ansible.builtin.assert:
+    that:
+      - fedora44_glxinfo.rc == 0
+      - "'llvmpipe' not in (fedora44_glxinfo.stdout | lower)"
+    fail_msg: glxinfo did not report a working AMD/Mesa hardware renderer.
+  when:
+    - fedora44_graphics_strict_checks | bool
+    - ansible_user_id == target_user
+    - lookup('ansible.builtin.env', 'DISPLAY') | length > 0

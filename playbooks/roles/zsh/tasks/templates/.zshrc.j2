@@ -189,10 +189,12 @@ if [ -d "$FZF_HOME" ]; then
     {% endif %}
 fi
 
+{% if zsh_enable_direnv | bool and zsh_target_user != 'root' %}
 # direnv hook
 if command -v direnv >/dev/null 2>&1; then
     eval "$(direnv hook zsh)"
 fi
+{% endif %}
 
 # Source role-provided init.d snippets
 if [ -d "$HOME/.local/share/zsh/init.d" ]; then

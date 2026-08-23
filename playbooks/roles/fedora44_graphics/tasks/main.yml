@@ -1,69 +1,18 @@
 ---
-- name: Install Radeon baseline and diagnostic packages
-  ansible.builtin.dnf:
-    name:
-      - pciutils
-      - vulkan-tools
-      - glx-utils
-      - mesa-vulkan-drivers
-      - mesa-vulkan-drivers.i686
-      - mesa-dri-drivers.i686
-    state: present
-  become: true
+- name: Run graphics system tasks
+  ansible.builtin.include_tasks:
+    file: system.yml
+    apply:
+      tags:
+        - system
+  tags:
+    - system
 
-- name: Read PCI driver information
-  ansible.builtin.command:
-    argv:
-      - lspci
-      - -nnk
-  register: fedora44_lspci
-  changed_when: false
-
-- name: Read Vulkan device summary
-  ansible.builtin.command:
-    argv:
-      - vulkaninfo
-      - --summary
-  register: fedora44_vulkaninfo
-  changed_when: false
-  failed_when: false
-
-- name: Require amdgpu and a hardware Vulkan device
-  ansible.builtin.assert:
-    that:
-      - "'Kernel driver in use: amdgpu' in fedora44_lspci.stdout"
-      - fedora44_vulkaninfo.rc == 0
-      - "'llvmpipe' not in (fedora44_vulkaninfo.stdout | lower)"
-    fail_msg: >-
-      The Radeon baseline check failed. Verify the PCI device, amdgpu, and the
-      RADV/Mesa Vulkan path before installing later workstation components.
-  when: fedora44_graphics_strict_checks | bool
-
-- name: Read OpenGL renderer information
-  ansible.builtin.command:
-    argv:
-      - glxinfo
-      - -B
-  register: fedora44_glxinfo
-  changed_when: false
-  failed_when: false
-  when: lookup('ansible.builtin.env', 'DISPLAY') | length > 0
-
-- name: Require a hardware OpenGL renderer
-  ansible.builtin.assert:
-    that:
-      - fedora44_glxinfo.rc == 0
-      - "'llvmpipe' not in (fedora44_glxinfo.stdout | lower)"
-    fail_msg: glxinfo did not report a working AMD/Mesa hardware renderer.
-  when:
-    - fedora44_graphics_strict_checks | bool
-    - lookup('ansible.builtin.env', 'DISPLAY') | length > 0
-
-- name: Read the installed Mesa Vulkan version
-  ansible.builtin.command:
-    argv:
-      - rpm
-      - -q
-      - mesa-vulkan-drivers
-  register: fedora44_mesa_vulkan_version
-  changed_when: false
+- name: Run graphics session tasks
+  ansible.builtin.include_tasks:
+    file: session.yml
+    apply:
+      tags:
+        - session
+  tags:
+    - session

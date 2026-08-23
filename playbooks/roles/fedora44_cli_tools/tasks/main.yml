@@ -1,0 +1,48 @@
+---
+- name: Install workstation CLI and diagnostic tools
+  ansible.builtin.dnf:
+    name:
+      - btop
+      - ripgrep
+      - fd-find
+      - bat
+      - jq
+      - tealdeer
+      - tmux
+      - hyperfine
+      - entr
+      - sysstat
+      - lsof
+      - lm_sensors
+      - smartmontools
+      - nvme-cli
+      - pciutils
+      - usbutils
+      - ethtool
+      - tcpdump
+      - bind-utils
+      - mtr
+      - iperf3
+      - nmap-ncat
+    state: present
+  become: true
+  when: fedora44_install_cli_tools | bool
+  tags:
+    - system
+    - cli
+
+- name: Install heavy debugging tools
+  ansible.builtin.dnf:
+    name:
+      - strace
+      - perf
+      - gdb
+      - valgrind
+    state: present
+  become: true
+  when:
+    - fedora44_install_cli_tools | bool
+    - fedora44_install_heavy_debug_tools | bool
+  tags:
+    - system
+    - cli

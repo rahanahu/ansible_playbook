@@ -1,0 +1,4 @@
+---
+fedora44_install_desktop_essentials: true
+fedora44_install_nas_tools: false
+fedora44_install_network_gui_tools: false

@@ -1,19 +1,15 @@
 ---
-- name: Set target zsh user
-  ansible.builtin.set_fact:
-    zsh_user: "{{ ansible_user_id }}"
-    zsh_user_home: "{{ ansible_user_dir }}"
-  changed_when: false
-
-- name: Validate supported operating system
+- name: Validate the zsh target
   ansible.builtin.assert:
     that:
+      - zsh_target_user | length > 0
+      - zsh_target_home | length > 0
       - ansible_system in ['Linux', 'Darwin']
-    fail_msg: >-
-      The zsh role supports Linux and macOS only
-      (detected: {{ ansible_system }}).
+    fail_msg: Resolve the zsh target user and home before applying this role.
+  tags:
+    - user
 
-- name: Install zsh environment packages (Linux)
+- name: Install zsh environment packages on Linux
   ansible.builtin.package:
     name:
       - zsh
@@ -23,174 +19,285 @@
       - wl-clipboard
     state: present
   become: true
-  when: ansible_system == 'Linux'
+  when:
+    - zsh_install_system_packages | bool
+    - ansible_system == 'Linux'
+  tags:
+    - system
 
-- name: Install zsh environment packages (macOS)
+- name: Install zsh environment packages on macOS
   ansible.builtin.include_tasks:
     file: mac.yml
-  when: ansible_system == 'Darwin'
+    apply:
+      tags:
+        - system
+  when:
+    - zsh_install_system_packages | bool
+    - ansible_system == 'Darwin'
+  tags:
+    - system
 
-- name: Ensure ~/.local/bin exists
+- name: Ensure target user data directories exist
   ansible.builtin.file:
-    path: "{{ zsh_user_home }}/.local/bin"
+    path: "{{ zsh_target_directory_item.path }}"
     state: directory
-    owner: "{{ zsh_user }}"
-    mode: "0755"
+    mode: "{{ zsh_target_directory_item.mode }}"
+  become: "{{ ansible_user_id != zsh_target_user }}"
+  become_user: "{{ zsh_target_user }}"
+  loop:
+    - path: "{{ zsh_target_home }}/.local/bin"
+      mode: "0755"
+    - path: "{{ zsh_target_home }}/.local/share"
+      mode: "0755"
+    - path: "{{ zsh_target_home }}/.cache/ansible"
+      mode: "0700"
+  loop_control:
+    label: "{{ zsh_target_directory_item.path }}"
+    loop_var: zsh_target_directory_item
+  tags:
+    - user
 
-- name: Ensure ~/.local/share exists
-  ansible.builtin.file:
-    path: "{{ zsh_user_home }}/.local/share"
-    state: directory
-    owner: "{{ zsh_user }}"
-    mode: "0755"
-
-- name: Clone fzf repository (versioned)
+- name: Clone fzf repository at the pinned version
   ansible.builtin.git:
     repo: https://github.com/junegunn/fzf.git
-    dest: "{{ zsh_user_home }}/.local/share/fzf"
+    dest: "{{ zsh_target_home }}/.local/share/fzf"
     version: "{{ fzf_version }}"
     depth: 1
     update: true
-  become: true
-  become_user: "{{ zsh_user }}"
+  become: "{{ ansible_user_id != zsh_target_user }}"
+  become_user: "{{ zsh_target_user }}"
+  environment:
+    HOME: "{{ zsh_target_home }}"
   register: fzf_clone
+  tags:
+    - user
 
-- name: Check for fzf binary
+- name: Check for the target user's fzf binary
   ansible.builtin.stat:
-    path: "{{ zsh_user_home }}/.local/share/fzf/bin/fzf"
+    path: "{{ zsh_target_home }}/.local/share/fzf/bin/fzf"
+  become: "{{ ansible_user_id != zsh_target_user }}"
+  become_user: "{{ zsh_target_user }}"
   register: fzf_bin
+  tags:
+    - user
 
 - name: Install fzf binary when updated or missing
-  ansible.builtin.command: ./install --bin
+  ansible.builtin.command:
+    argv:
+      - ./install
+      - --bin
   args:
-    chdir: "{{ zsh_user_home }}/.local/share/fzf"
-  become: true
-  become_user: "{{ zsh_user }}"
+    chdir: "{{ zsh_target_home }}/.local/share/fzf"
+  become: "{{ ansible_user_id != zsh_target_user }}"
+  become_user: "{{ zsh_target_user }}"
+  environment:
+    HOME: "{{ zsh_target_home }}"
   when: fzf_clone.changed or not fzf_bin.stat.exists
+  tags:
+    - user
 
-- name: Link fzf into ~/.local/bin
+- name: Link fzf into the target user's local bin
   ansible.builtin.file:
-    src: "{{ zsh_user_home }}/.local/share/fzf/bin/fzf"
-    dest: "{{ zsh_user_home }}/.local/bin/fzf"
+    src: "{{ zsh_target_home }}/.local/share/fzf/bin/fzf"
+    dest: "{{ zsh_target_home }}/.local/bin/fzf"
     state: link
-    owner: "{{ zsh_user }}"
     force: true
+  become: "{{ ansible_user_id != zsh_target_user }}"
+  become_user: "{{ zsh_target_user }}"
+  tags:
+    - user
 
-- name: Check existing .zshrc for legacy whole-file management
+- name: Check the target user's existing zshrc
   ansible.builtin.stat:
-    path: "{{ zsh_user_home }}/.zshrc"
+    path: "{{ zsh_target_home }}/.zshrc"
     checksum_algorithm: sha1
+  become: "{{ ansible_user_id != zsh_target_user }}"
+  become_user: "{{ zsh_target_user }}"
   register: zshrc_existing
+  tags:
+    - user
 
-- name: Migrate unmodified legacy managed .zshrc
-  ansible.builtin.copy:
-    content: ""
-    dest: "{{ zsh_user_home }}/.zshrc"
-    owner: "{{ zsh_user }}"
-    mode: "0644"
-    backup: true
+- name: Read an unknown existing zshrc before migration
+  ansible.builtin.slurp:
+    src: "{{ zsh_target_home }}/.zshrc"
+  become: "{{ ansible_user_id != zsh_target_user }}"
+  become_user: "{{ zsh_target_user }}"
+  register: zshrc_unknown_content
   when:
     - zshrc_existing.stat.exists
     - >-
-      (zshrc_existing.stat.checksum | default(''))
-      in zsh_legacy_managed_checksums
+      (zshrc_existing.stat.checksum | default('')) not in
+      zsh_legacy_managed_checksums
+  tags:
+    - user
 
-- name: Ensure managed zsh config directory exists
+- name: Stop for an unknown legacy managed zshrc
+  ansible.builtin.assert:
+    that:
+      - >-
+        'Ansible-managed zsh configuration' not in
+        (zshrc_unknown_content.content | b64decode)
+        or 'BEGIN ANSIBLE MANAGED ZSH' in
+        (zshrc_unknown_content.content | b64decode)
+    fail_msg: >-
+      {{ zsh_target_home }}/.zshrc looks like an older whole-file managed config
+      with local changes. Migrate it manually to avoid loading compinit, zoxide,
+      fzf, and Sheldon twice.
+  when:
+    - zshrc_existing.stat.exists
+    - >-
+      (zshrc_existing.stat.checksum | default('')) not in
+      zsh_legacy_managed_checksums
+  tags:
+    - user
+
+- name: Migrate an unmodified legacy managed zshrc
+  ansible.builtin.copy:
+    content: ""
+    dest: "{{ zsh_target_home }}/.zshrc"
+    mode: "0644"
+    backup: true
+  become: "{{ ansible_user_id != zsh_target_user }}"
+  become_user: "{{ zsh_target_user }}"
+  when:
+    - zshrc_existing.stat.exists
+    - >-
+      (zshrc_existing.stat.checksum | default('')) in
+      zsh_legacy_managed_checksums
+  tags:
+    - user
+
+- name: Ensure target zsh configuration directories exist
   ansible.builtin.file:
-    path: "{{ zsh_user_home }}/.config/zsh"
+    path: "{{ zsh_config_directory_item.path }}"
     state: directory
-    owner: "{{ zsh_user }}"
-    mode: "0755"
+    mode: "{{ zsh_config_directory_item.mode }}"
+  become: "{{ ansible_user_id != zsh_target_user }}"
+  become_user: "{{ zsh_target_user }}"
+  loop:
+    - path: "{{ zsh_target_home }}/.config/zsh"
+      mode: "0755"
+    - path: "{{ zsh_target_home }}/.local/share/zsh/init.d"
+      mode: "0755"
+    - path: "{{ zsh_target_home }}/.config/sheldon"
+      mode: "0700"
+  loop_control:
+    label: "{{ zsh_config_directory_item.path }}"
+    loop_var: zsh_config_directory_item
+  tags:
+    - user
 
 - name: Deploy Ansible-managed zsh configuration
   ansible.builtin.template:
     src: .zshrc.j2
-    dest: "{{ zsh_user_home }}/.config/zsh/ansible.zsh"
-    owner: "{{ zsh_user }}"
+    dest: "{{ zsh_target_home }}/.config/zsh/ansible.zsh"
     mode: "0644"
+  become: "{{ ansible_user_id != zsh_target_user }}"
+  become_user: "{{ zsh_target_user }}"
+  tags:
+    - user
 
-- name: Load Ansible-managed configuration from .zshrc
+- name: Load Ansible-managed configuration from zshrc
   ansible.builtin.blockinfile:
-    path: "{{ zsh_user_home }}/.zshrc"
+    path: "{{ zsh_target_home }}/.zshrc"
     marker: "# {mark} ANSIBLE MANAGED ZSH"
     insertbefore: BOF
     create: true
     backup: true
-    owner: "{{ zsh_user }}"
     mode: "0644"
     block: |
       if [ -r "$HOME/.config/zsh/ansible.zsh" ]; then
         source "$HOME/.config/zsh/ansible.zsh"
       fi
+  become: "{{ ansible_user_id != zsh_target_user }}"
+  become_user: "{{ zsh_target_user }}"
+  tags:
+    - user
 
-- name: Ensure zsh init.d directory exists
-  ansible.builtin.file:
-    path: "{{ zsh_user_home }}/.local/share/zsh/init.d"
-    state: directory
-    owner: "{{ zsh_user }}"
-    mode: "0755"
-
-- name: Check installed sheldon version
+- name: Check installed Sheldon version
   ansible.builtin.command:
     argv:
-      - "{{ zsh_user_home }}/.local/bin/sheldon"
+      - "{{ zsh_target_home }}/.local/bin/sheldon"
       - --version
+  become: "{{ ansible_user_id != zsh_target_user }}"
+  become_user: "{{ zsh_target_user }}"
+  environment:
+    HOME: "{{ zsh_target_home }}"
   register: sheldon_version_check
   changed_when: false
   failed_when: false
   when: ansible_system == 'Linux'
+  tags:
+    - user
 
-- name: Download pinned sheldon install script
+- name: Download pinned Sheldon installer
   ansible.builtin.get_url:
     url: >-
       https://raw.githubusercontent.com/rossmacarthur/install/
       {{- sheldon_installer_commit -}}/crate.sh
-    dest: /tmp/sheldon_install.sh
+    dest: "{{ zsh_target_home }}/.cache/ansible/sheldon-install.sh"
     mode: "0700"
     checksum: "{{ sheldon_installer_checksum }}"
+  become: "{{ ansible_user_id != zsh_target_user }}"
+  become_user: "{{ zsh_target_user }}"
   when:
     - ansible_system == 'Linux'
     - sheldon_version not in (sheldon_version_check.stdout | default(''))
+  tags:
+    - user
 
-- name: Install pinned sheldon version
+- name: Install pinned Sheldon version
   ansible.builtin.command:
     argv:
-      - /tmp/sheldon_install.sh
+      - "{{ zsh_target_home }}/.cache/ansible/sheldon-install.sh"
       - --repo
       - rossmacarthur/sheldon
       - --tag
       - "{{ sheldon_version }}"
       - --to
-      - "{{ zsh_user_home }}/.local/bin"
+      - "{{ zsh_target_home }}/.local/bin"
       - --force
-  become: true
-  become_user: "{{ zsh_user }}"
+  become: "{{ ansible_user_id != zsh_target_user }}"
+  become_user: "{{ zsh_target_user }}"
+  environment:
+    HOME: "{{ zsh_target_home }}"
   when:
     - ansible_system == 'Linux'
     - sheldon_version not in (sheldon_version_check.stdout | default(''))
+  tags:
+    - user
 
-- name: Ensure sheldon config dir exists
-  ansible.builtin.file:
-    path: "{{ zsh_user_home }}/.config/sheldon"
-    state: directory
-    owner: "{{ zsh_user }}"
-    mode: "0700"
-
-- name: Deploy plugins.toml for sheldon
+- name: Deploy Sheldon plugins configuration
   ansible.builtin.template:
     src: plugins.toml.j2
-    dest: "{{ zsh_user_home }}/.config/sheldon/plugins.toml"
-    owner: "{{ zsh_user }}"
+    dest: "{{ zsh_target_home }}/.config/sheldon/plugins.toml"
     mode: "0644"
+  become: "{{ ansible_user_id != zsh_target_user }}"
+  become_user: "{{ zsh_target_user }}"
+  tags:
+    - user
 
-- name: Find zsh binary
-  ansible.builtin.command: which zsh
+- name: Find the zsh binary
+  ansible.builtin.command:
+    argv:
+      - sh
+      - -c
+      - command -v zsh
   register: zsh_path
   changed_when: false
-  failed_when: false
+  when:
+    - zsh_manage_login_shell | bool
+    - zsh_target_user != 'root'
+  tags:
+    - user
 
-- name: Change default shell to zsh for current user
+- name: Set the target user's login shell to zsh
   ansible.builtin.user:
-    name: "{{ zsh_user }}"
+    name: "{{ zsh_target_user }}"
     shell: "{{ zsh_path.stdout | default('/usr/bin/zsh', true) }}"
   become: true
+  when:
+    - zsh_manage_login_shell | bool
+    - zsh_target_user != 'root'
+  tags:
+    - user

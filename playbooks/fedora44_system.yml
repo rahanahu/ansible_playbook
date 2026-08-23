@@ -1,0 +1,86 @@
+---
+- name: Configure Fedora 44 system components
+  hosts: localhost
+  connection: local
+  gather_facts: true
+
+  tasks:
+    - name: Validate Fedora system state
+      ansible.builtin.import_role:
+        name: fedora44_preflight
+        tasks_from: system
+      tags:
+        - system
+        - preflight
+
+    - name: Configure the Radeon and Mesa baseline
+      ansible.builtin.import_role:
+        name: fedora44_graphics
+        tasks_from: system
+      tags:
+        - system
+        - graphics
+
+    - name: Configure Fedora package repositories
+      ansible.builtin.import_role:
+        name: fedora44_repositories
+      tags:
+        - system
+        - repositories
+        - desktop
+        - gaming
+
+    - name: Install Fedora desktop essentials
+      ansible.builtin.import_role:
+        name: fedora44_desktop
+      tags:
+        - system
+        - desktop
+
+    - name: Install Fedora CLI and diagnostic tools
+      ansible.builtin.import_role:
+        name: fedora44_cli_tools
+      tags:
+        - system
+        - cli
+
+    - name: Install zsh environment system packages
+      ansible.builtin.import_role:
+        name: zsh
+        tasks_from: system
+      tags:
+        - system
+        - development
+        - zsh
+
+    - name: Configure Docker system components
+      ansible.builtin.import_role:
+        name: docker
+        tasks_from: system
+      tags:
+        - system
+        - development
+        - docker
+
+    - name: Install Snapper packages and optional configuration
+      ansible.builtin.import_role:
+        name: fedora44_snapper
+      tags:
+        - system
+        - snapper
+
+    - name: Install gaming system components
+      ansible.builtin.import_role:
+        name: fedora44_gaming
+        tasks_from: system
+      tags:
+        - system
+        - gaming
+
+    - name: Install Japanese input system packages
+      ansible.builtin.import_role:
+        name: fedora44_input
+        tasks_from: system
+      tags:
+        - system
+        - input

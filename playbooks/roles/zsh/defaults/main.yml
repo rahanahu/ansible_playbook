@@ -5,6 +5,11 @@ fzf_version: "v0.74.3"
 sheldon_version: "0.8.5"
 sheldon_installer_commit: "d8c82abdf1cdd67e3a0f494f497e0876f97506f7"
 sheldon_installer_checksum: "sha256:9ff2b3ee918dd345807aece8abf2231fab4f1d827867c4e933d1da1a4924cc9d"
+zsh_target_user: "{{ target_user }}"
+zsh_target_home: "{{ target_home }}"
+zsh_manage_login_shell: true
+zsh_enable_direnv: true
+zsh_install_system_packages: true
 
 # Rendered checksums from the former whole-file .zshrc template. These allow
 # unmodified legacy files to be migrated without deleting user customizations.

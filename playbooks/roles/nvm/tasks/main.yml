@@ -1,61 +1,107 @@
 ---
-- name: Check if nvm is installed
-  ansible.builtin.stat:
-    path: "{{ ansible_user_dir }}/.nvm/nvm.sh"
-  register: nvm_install
+- name: Require the nvm target user
+  ansible.builtin.assert:
+    that:
+      - target_user is defined
+      - target_home is defined
+      - target_user != 'root'
+    fail_msg: Resolve a non-root target_user and target_home before the nvm role.
+  tags:
+    - user
 
-- name: Download nvm install script
+- name: Check whether nvm is installed for the workstation user
+  ansible.builtin.stat:
+    path: "{{ target_home }}/.nvm/nvm.sh"
+  register: nvm_install
+  tags:
+    - user
+
+- name: Create the workstation user Ansible cache directory
+  ansible.builtin.file:
+    path: "{{ target_home }}/.cache/ansible"
+    state: directory
+    mode: "0700"
+  become: "{{ ansible_user_id != target_user }}"
+  become_user: "{{ target_user }}"
+  when: not nvm_install.stat.exists
+  tags:
+    - user
+
+- name: Download the pinned nvm installer
   ansible.builtin.get_url:
     url: https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh
-    dest: /tmp/nvm_install.sh
+    dest: "{{ target_home }}/.cache/ansible/nvm-install.sh"
     mode: "0700"
+  become: "{{ ansible_user_id != target_user }}"
+  become_user: "{{ target_user }}"
   when: not nvm_install.stat.exists
+  tags:
+    - user
 
-- name: Run nvm install script
-  ansible.builtin.command: /tmp/nvm_install.sh
+- name: Install nvm for the workstation user
+  ansible.builtin.command:
+    argv:
+      - "{{ target_home }}/.cache/ansible/nvm-install.sh"
+  become: "{{ ansible_user_id != target_user }}"
+  become_user: "{{ target_user }}"
   environment:
     PROFILE: /dev/null
-    NVM_DIR: "{{ ansible_user_dir }}/.nvm"
-    HOME: "{{ ansible_user_dir }}"
+    NVM_DIR: "{{ target_home }}/.nvm"
+    HOME: "{{ target_home }}"
   when: not nvm_install.stat.exists
+  tags:
+    - user
 
-- name: Ensure zsh init.d directory exists
+- name: Ensure the workstation zsh init directory exists
   ansible.builtin.file:
-    path: "{{ ansible_user_dir }}/.local/share/zsh/init.d"
+    path: "{{ target_home }}/.local/share/zsh/init.d"
     state: directory
-    owner: "{{ ansible_user_id }}"
     mode: "0755"
+  become: "{{ ansible_user_id != target_user }}"
+  become_user: "{{ target_user }}"
+  tags:
+    - user
 
-- name: Deploy nvm init snippet for zsh
+- name: Deploy the workstation nvm zsh snippet
   ansible.builtin.copy:
-    dest: "{{ ansible_user_dir }}/.local/share/zsh/init.d/nvm.sh"
+    dest: "{{ target_home }}/.local/share/zsh/init.d/nvm.sh"
     content: |
       export NVM_DIR="$HOME/.nvm"
       [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
       [ -s "$NVM_DIR/bash_completion" ] && . "$NVM_DIR/bash_completion"
-    owner: "{{ ansible_user_id }}"
     mode: "0644"
+  become: "{{ ansible_user_id != target_user }}"
+  become_user: "{{ target_user }}"
+  tags:
+    - user
 
-- name: Ensure nvm init lines exist in .bashrc
+- name: Configure nvm in the workstation bash profile
   ansible.builtin.blockinfile:
-    path: "{{ ansible_user_dir }}/.bashrc"
+    path: "{{ target_home }}/.bashrc"
     marker: "# {mark} ANSIBLE MANAGED NVM"
     create: true
     block: |
       export NVM_DIR="$HOME/.nvm"
       [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
       [ -s "$NVM_DIR/bash_completion" ] && . "$NVM_DIR/bash_completion"
-    owner: "{{ ansible_user_id }}"
     mode: "0644"
+  become: "{{ ansible_user_id != target_user }}"
+  become_user: "{{ target_user }}"
+  tags:
+    - user
 
-- name: Install and select Node.js LTS on first nvm install
+- name: Install and select Node.js LTS after installing nvm
   ansible.builtin.shell: |
-    export NVM_DIR="$HOME/.nvm"
-    [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+    . "$NVM_DIR/nvm.sh"
     nvm install --lts
     nvm use --lts
   args:
     executable: /bin/bash
+  become: "{{ ansible_user_id != target_user }}"
+  become_user: "{{ target_user }}"
   environment:
-    HOME: "{{ ansible_user_dir }}"
+    NVM_DIR: "{{ target_home }}/.nvm"
+    HOME: "{{ target_home }}"
   when: not nvm_install.stat.exists
+  tags:
+    - user

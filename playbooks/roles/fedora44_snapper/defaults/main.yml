@@ -1,4 +1,5 @@
 ---
+fedora44_install_snapper: true
 fedora44_snapper_create_root_config: false
 fedora44_snapper_create_baseline_snapshot: false
 fedora44_snapper_baseline_description: fedora44-dev-baseline

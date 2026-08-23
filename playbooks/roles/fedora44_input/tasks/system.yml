@@ -1,0 +1,12 @@
+---
+- name: Install Fcitx5 and Mozc packages
+  ansible.builtin.dnf:
+    name:
+      - fcitx5
+      - fcitx5-configtool
+      - kcm-fcitx5
+      - fcitx5-qt
+      - fcitx5-qt6
+      - fcitx5-mozc
+    state: present
+  become: true

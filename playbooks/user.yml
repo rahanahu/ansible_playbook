@@ -1,0 +1,113 @@
+---
+- name: Configure a target user's workstation environment
+  hosts: localhost
+  connection: local
+  gather_facts: true
+
+  pre_tasks:
+    - name: Resolve the target user
+      ansible.builtin.import_role:
+        name: target_user
+      vars:
+        target_user_allow_root: >-
+          {{ not (user_require_non_root_target | default(false) | bool) }}
+      tags:
+        - user
+        - development
+        - docker
+        - uv
+        - zsh
+        - nvm
+        - gaming
+        - input
+        - session
+        - preflight
+        - graphics
+
+    - name: Select safe defaults for the target profile
+      ansible.builtin.set_fact:
+        target_user_profile: >-
+          {{ 'root' if target_user == 'root' else
+             (user_profile | default('workstation', true)) }}
+      changed_when: false
+      tags:
+        - user
+        - development
+        - docker
+        - uv
+        - zsh
+        - nvm
+        - gaming
+        - input
+        - session
+        - preflight
+        - graphics
+
+  tasks:
+    - name: Configure Docker access for a workstation user
+      ansible.builtin.import_role:
+        name: docker
+        tasks_from: user
+      when: target_user_profile == 'workstation'
+      tags:
+        - user
+        - development
+        - docker
+
+    - name: Configure uv for a workstation user
+      ansible.builtin.import_role:
+        name: uv
+      when: target_user_profile == 'workstation'
+      tags:
+        - user
+        - development
+        - uv
+
+    - name: Configure zsh for the target user
+      ansible.builtin.include_role:
+        name: zsh
+        apply:
+          tags:
+            - user
+            - zsh
+      vars:
+        zsh_target_user: "{{ target_user }}"
+        zsh_target_home: "{{ target_home }}"
+        zsh_manage_login_shell: "{{ target_user_profile == 'workstation' }}"
+        zsh_enable_direnv: "{{ target_user_profile == 'workstation' }}"
+        zsh_install_system_packages: false
+      tags:
+        - user
+        - development
+        - zsh
+
+    - name: Configure nvm for a workstation user
+      ansible.builtin.import_role:
+        name: nvm
+      when: target_user_profile == 'workstation'
+      tags:
+        - user
+        - development
+        - nvm
+
+    - name: Configure optional user gaming tools
+      ansible.builtin.import_role:
+        name: fedora44_gaming
+        tasks_from: user
+      when:
+        - target_user_profile == 'workstation'
+        - ansible_distribution == 'Fedora'
+      tags:
+        - user
+        - gaming
+
+    - name: Configure the workstation user's Fcitx environment
+      ansible.builtin.import_role:
+        name: fedora44_input
+        tasks_from: user
+      when:
+        - target_user_profile == 'workstation'
+        - ansible_distribution == 'Fedora'
+      tags:
+        - user
+        - input

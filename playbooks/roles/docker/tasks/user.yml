@@ -1,0 +1,29 @@
+---
+- name: Require a resolved Docker target user
+  ansible.builtin.assert:
+    that:
+      - target_user is defined
+    fail_msg: Resolve target_user before applying Docker user access.
+  when: ansible_system == 'Linux'
+
+- name: Check whether the docker group exists
+  ansible.builtin.getent:
+    database: group
+    key: docker
+    fail_key: false
+  when:
+    - ansible_system == 'Linux'
+    - target_user != 'root'
+
+- name: Add the non-root target user to the docker group
+  ansible.builtin.user:
+    name: "{{ target_user }}"
+    groups: docker
+    append: true
+  become: true
+  when:
+    - ansible_system == 'Linux'
+    - target_user != 'root'
+    - "'docker' in (ansible_facts.getent_group | default({}))"
+    - >-
+      ((ansible_facts.getent_group | default({})).get('docker')) is not none

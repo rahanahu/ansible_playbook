@@ -4,5 +4,16 @@
   connection: local
   gather_facts: true
 
-  roles:
-    - role: hazkey
+  pre_tasks:
+    - name: Resolve the workstation target user
+      ansible.builtin.import_role:
+        name: target_user
+      tags:
+        - always
+
+  tasks:
+    - name: Configure Hazkey for the workstation user
+      ansible.builtin.import_role:
+        name: hazkey
+      tags:
+        - hazkey
