@@ -287,7 +287,8 @@ route, throughput, TCP/UDP, syscall, debugger, sensor, SMART, and NVMe tools.
 Disable them with `fedora_install_cli_tools=false` or disable only the heavier
 debuggers with `fedora_install_heavy_debug_tools=false`.
 
-Snapper packages are installed by the system baseline. Creating its root
+Snapper packages are installed by the system baseline, along with
+`btrfs-assistant` unless `fedora_install_snapper_gui=false`. Creating its root
 configuration and a baseline snapshot remains explicit because it can affect the
 Btrfs subvolume layout:
 
@@ -297,6 +298,28 @@ ansible-playbook playbooks/fedora_workstation.yml \
   -e fedora_snapper_create_root_config=true \
   -e fedora_snapper_create_baseline_snapshot=true
 ```
+
+Retention (`fedora_snapper_manage_retention`) and timer management
+(`fedora_snapper_manage_timers`) default to following
+`fedora_snapper_create_root_config`. When enabled, the role sets
+`TIMELINE_LIMIT_HOURLY`/`_DAILY`/`_WEEKLY`/`_MONTHLY`/`_QUARTERLY`/`_YEARLY`
+via `fedora_snapper_timeline_limit_hourly`, `_daily`, `_weekly`, `_monthly`,
+`_quarterly`, and `_yearly` (defaults `6`/`7`/`2`/`0`/`0`/`0`), and
+`NUMBER_LIMIT`/`NUMBER_LIMIT_IMPORTANT` via `fedora_snapper_number_limit` and
+`fedora_snapper_number_limit_important` (both default to `10`). It also
+enables the units listed in `fedora_snapper_timers`, which defaults to
+`snapper-timeline.timer` and `snapper-cleanup.timer`; `snapper-boot.timer` is
+not enabled by default. Snapper only manages the `/` subvolume; `/home` is
+not covered.
+
+Hosts that already ran with `fedora_snapper_create_root_config=true` will see
+their retention settings move from Fedora's package defaults (`HOURLY=10`,
+`DAILY=10`, `WEEKLY=0`, `MONTHLY=10`, `QUARTERLY=0`, `YEARLY=10`,
+`NUMBER_LIMIT=50`) to the role's defaults above the first time this role
+runs. `QUARTERLY` is `0` in both cases, so only `HOURLY`/`DAILY`/`WEEKLY`/
+`MONTHLY`/`YEARLY`/`NUMBER_LIMIT` actually change. Set
+`fedora_snapper_manage_retention=false` to leave existing retention settings
+untouched.
 
 GameMode, gamescope, and protontricks are also opt-in with
 `fedora_install_gaming_extras=true`. ProtonPlus uses

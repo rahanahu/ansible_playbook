@@ -1,5 +1,28 @@
 ---
 fedora_install_snapper: true
+fedora_install_snapper_gui: true
 fedora_snapper_create_root_config: "{{ fedora44_snapper_create_root_config | default(false) }}"
 fedora_snapper_create_baseline_snapshot: "{{ fedora44_snapper_create_baseline_snapshot | default(false) }}"
 fedora_snapper_baseline_description: fedora44-dev-baseline
+
+# Internal flag overwritten by tasks/config.yml at run time; do not set directly.
+fedora_snapper_root_config_present: false
+
+# Retention and timer management follows the root configuration switch.
+fedora_snapper_manage_retention: "{{ fedora_snapper_create_root_config | bool }}"
+fedora_snapper_manage_timers: "{{ fedora_snapper_create_root_config | bool }}"
+
+fedora_snapper_timers:
+  - snapper-timeline.timer
+  - snapper-cleanup.timer
+
+fedora_snapper_timeline_create: "yes"
+fedora_snapper_timeline_cleanup: "yes"
+fedora_snapper_timeline_limit_hourly: "6"
+fedora_snapper_timeline_limit_daily: "7"
+fedora_snapper_timeline_limit_weekly: "2"
+fedora_snapper_timeline_limit_monthly: "0"
+fedora_snapper_timeline_limit_quarterly: "0"
+fedora_snapper_timeline_limit_yearly: "0"
+fedora_snapper_number_limit: "10"
+fedora_snapper_number_limit_important: "10"

@@ -1,115 +1,30 @@
 ---
-- name: Read the root filesystem type
-  ansible.builtin.command:
-    argv:
-      - findmnt
-      - -n
-      - -o
-      - FSTYPE
-      - /
-  register: fedora_root_filesystem
-  changed_when: false
-  when: >-
-    fedora_snapper_create_root_config | bool or
-    fedora_snapper_create_baseline_snapshot | bool
-
-- name: Require Btrfs for Snapper
-  ansible.builtin.assert:
-    that:
-      - fedora_root_filesystem.stdout | trim == 'btrfs'
-    fail_msg: >-
-      The root filesystem is not Btrfs. The role will not modify the filesystem
-      or create a replacement subvolume layout.
-  when: >-
-    fedora_snapper_create_root_config | bool or
-    fedora_snapper_create_baseline_snapshot | bool
-
 - name: Install Snapper packages
-  ansible.builtin.dnf:
-    name:
-      - snapper
-      - btrfs-assistant
-    state: present
-  become: true
-  when: >-
-    fedora_install_snapper | bool or
-    fedora_snapper_create_root_config | bool or
-    fedora_snapper_create_baseline_snapshot | bool
+  ansible.builtin.import_tasks:
+    file: packages.yml
 
-- name: Check for the root Snapper configuration
-  ansible.builtin.command:
-    argv:
-      - snapper
-      - -c
-      - root
-      - get-config
-  become: true
-  register: fedora_snapper_root_config
-  changed_when: false
-  failed_when: false
+- name: Create and validate the root Snapper configuration
+  ansible.builtin.import_tasks:
+    file: config.yml
   when: >-
     fedora_snapper_create_root_config | bool or
     fedora_snapper_create_baseline_snapshot | bool
 
-- name: Create the root Snapper configuration when explicitly requested
-  ansible.builtin.command:
-    argv:
-      - snapper
-      - -c
-      - root
-      - create-config
-      - /
-  become: true
-  changed_when: true
-  when:
-    - fedora_snapper_create_root_config | bool
-    - fedora_snapper_root_config.rc != 0
+- name: Apply the root Snapper retention configuration
+  ansible.builtin.import_tasks:
+    file: retention.yml
+  when: >-
+    fedora_snapper_manage_retention | bool and
+    fedora_snapper_root_config_present | bool
 
-- name: Recheck the root Snapper configuration
-  ansible.builtin.command:
-    argv:
-      - snapper
-      - -c
-      - root
-      - get-config
-  become: true
-  register: fedora_snapper_root_config_after
-  changed_when: false
-  failed_when: false
+- name: Enable and start the Snapper timers
+  ansible.builtin.import_tasks:
+    file: timers.yml
+  when: >-
+    fedora_snapper_manage_timers | bool and
+    fedora_snapper_root_config_present | bool
+
+- name: Create the baseline Snapper snapshot
+  ansible.builtin.import_tasks:
+    file: baseline.yml
   when: fedora_snapper_create_baseline_snapshot | bool
-
-- name: Require a root configuration before creating a snapshot
-  ansible.builtin.assert:
-    that:
-      - fedora_snapper_root_config_after.rc == 0
-    fail_msg: >-
-      No root Snapper configuration exists. Review the Btrfs subvolume layout or
-      explicitly enable fedora_snapper_create_root_config.
-  when: fedora_snapper_create_baseline_snapshot | bool
-
-- name: Read existing root snapshots
-  ansible.builtin.command:
-    argv:
-      - snapper
-      - -c
-      - root
-      - list
-  become: true
-  register: fedora_snapper_list
-  changed_when: false
-  when: fedora_snapper_create_baseline_snapshot | bool
-
-- name: Create the baseline snapshot once
-  ansible.builtin.command:
-    argv:
-      - snapper
-      - -c
-      - root
-      - create
-      - --description
-      - "{{ fedora_snapper_baseline_description }}"
-  become: true
-  changed_when: true
-  when:
-    - fedora_snapper_create_baseline_snapshot | bool
-    - fedora_snapper_baseline_description not in fedora_snapper_list.stdout

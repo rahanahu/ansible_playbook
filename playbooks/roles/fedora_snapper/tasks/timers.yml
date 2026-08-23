@@ -1,0 +1,22 @@
+---
+- name: Check for the Snapper timer unit files
+  ansible.builtin.stat:
+    path: "/usr/lib/systemd/system/{{ item }}"
+  become: true
+  register: fedora_snapper_timer_stat
+  loop: "{{ fedora_snapper_timers }}"
+  loop_control:
+    label: "{{ item }}"
+  check_mode: false
+
+- name: Enable and start the Snapper timers
+  ansible.builtin.systemd_service:
+    name: "{{ item.item }}"
+    enabled: true
+    state: started
+    daemon_reload: false
+  become: true
+  loop: "{{ fedora_snapper_timer_stat.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when: item.stat.exists

@@ -1,0 +1,98 @@
+---
+- name: Read the root filesystem type
+  ansible.builtin.command:
+    argv:
+      - findmnt
+      - -n
+      - -o
+      - FSTYPE
+      - /
+  register: fedora_root_filesystem
+  changed_when: false
+  check_mode: false
+
+- name: Require Btrfs for Snapper
+  ansible.builtin.assert:
+    that:
+      - (fedora_root_filesystem.stdout | default('')) | trim == 'btrfs'
+    fail_msg: >-
+      The root filesystem is not Btrfs. The role will not modify the filesystem
+      or create a replacement subvolume layout.
+
+- name: Check for the root Snapper configuration file
+  ansible.builtin.stat:
+    path: /etc/snapper/configs/root
+  become: true
+  register: fedora_snapper_root_config_stat
+  check_mode: false
+
+- name: Check whether Snapper recognizes the root configuration
+  ansible.builtin.command:
+    argv:
+      - snapper
+      - -c
+      - root
+      - get-config
+  become: true
+  register: fedora_snapper_root_config_check
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Check for an existing .snapshots path
+  ansible.builtin.stat:
+    path: /.snapshots
+  become: true
+  register: fedora_snapper_snapshots_dir_stat
+  check_mode: false
+
+- name: Require a Snapper configuration to match an existing .snapshots path
+  ansible.builtin.assert:
+    that:
+      - >-
+        not fedora_snapper_snapshots_dir_stat.stat.exists or
+        fedora_snapper_root_config_stat.stat.exists
+    fail_msg: >-
+      /.snapshots already exists but /etc/snapper/configs/root does not.
+      This is either leftover from a previous `snapper delete-config` or a
+      manually created subvolume, and this role will not overwrite it
+      automatically. Either remove the stale subvolume with
+      `btrfs subvolume delete /.snapshots` or create a matching
+      /etc/snapper/configs/root configuration by hand before rerunning this
+      role.
+
+- name: Require an orphaned Snapper configuration file to be resolved manually
+  ansible.builtin.assert:
+    that:
+      - >-
+        not fedora_snapper_root_config_stat.stat.exists or
+        (fedora_snapper_root_config_check.rc | default(1)) == 0
+    fail_msg: >-
+      /etc/snapper/configs/root exists, but `snapper -c root get-config`
+      does not recognize it. The subvolume it points at may not be mounted,
+      or the configuration may be corrupt. This role will not delete or
+      recreate the file automatically. Inspect the file and the underlying
+      subvolume, remove the stale configuration by hand if it is no longer
+      needed, then rerun this role.
+
+- name: Create the root Snapper configuration when explicitly requested
+  ansible.builtin.command:
+    argv:
+      - snapper
+      - -c
+      - root
+      - create-config
+      - /
+  become: true
+  register: fedora_snapper_create_config
+  changed_when: true
+  when:
+    - fedora_snapper_create_root_config | bool
+    - not fedora_snapper_root_config_stat.stat.exists
+
+- name: Record whether a root Snapper configuration is present
+  ansible.builtin.set_fact:
+    fedora_snapper_root_config_present: >-
+      {{ (fedora_snapper_root_config_stat.stat.exists and
+          (fedora_snapper_root_config_check.rc | default(1)) == 0) or
+         (fedora_snapper_create_config.changed | default(false)) }}

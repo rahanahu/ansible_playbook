@@ -1,0 +1,43 @@
+---
+- name: Read the root Snapper configuration file
+  ansible.builtin.slurp:
+    src: /etc/snapper/configs/root
+  become: true
+  register: fedora_snapper_root_config_raw
+
+- name: Parse the current root Snapper retention settings
+  ansible.builtin.set_fact:
+    fedora_snapper_current_retention: >-
+      {{ dict(fedora_snapper_root_config_raw.content | b64decode
+              | regex_findall('^([A-Z_]+)="(.*)"$', multiline=True)) }}
+
+- name: Define the desired root Snapper retention settings
+  ansible.builtin.set_fact:
+    fedora_snapper_desired_retention:
+      TIMELINE_CREATE: "{{ fedora_snapper_timeline_create }}"
+      TIMELINE_CLEANUP: "{{ fedora_snapper_timeline_cleanup }}"
+      TIMELINE_LIMIT_HOURLY: "{{ fedora_snapper_timeline_limit_hourly }}"
+      TIMELINE_LIMIT_DAILY: "{{ fedora_snapper_timeline_limit_daily }}"
+      TIMELINE_LIMIT_WEEKLY: "{{ fedora_snapper_timeline_limit_weekly }}"
+      TIMELINE_LIMIT_MONTHLY: "{{ fedora_snapper_timeline_limit_monthly }}"
+      TIMELINE_LIMIT_QUARTERLY: "{{ fedora_snapper_timeline_limit_quarterly }}"
+      TIMELINE_LIMIT_YEARLY: "{{ fedora_snapper_timeline_limit_yearly }}"
+      NUMBER_LIMIT: "{{ fedora_snapper_number_limit }}"
+      NUMBER_LIMIT_IMPORTANT: "{{ fedora_snapper_number_limit_important }}"
+
+- name: Apply changed root Snapper retention settings
+  ansible.builtin.command:
+    argv:
+      - snapper
+      - -c
+      - root
+      - set-config
+      - "{{ item.key }}={{ item.value }}"
+  become: true
+  loop: "{{ fedora_snapper_desired_retention | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+  when: >-
+    (fedora_snapper_current_retention[item.key] | default('') | string) !=
+    (item.value | string)
+  changed_when: true

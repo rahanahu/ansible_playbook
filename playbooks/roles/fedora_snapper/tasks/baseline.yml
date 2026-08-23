@@ -1,0 +1,48 @@
+---
+- name: Explain why the baseline snapshot is skipped in check mode
+  ansible.builtin.debug:
+    msg: >-
+      Skipping the baseline Snapper snapshot in check mode because no root
+      Snapper configuration exists yet. A normal run creates the
+      configuration (when fedora_snapper_create_root_config is enabled)
+      before this snapshot can be evaluated.
+  when:
+    - ansible_check_mode
+    - not (fedora_snapper_root_config_present | bool)
+
+- name: Require a root configuration before creating a snapshot
+  ansible.builtin.assert:
+    that:
+      - fedora_snapper_root_config_present | bool
+    fail_msg: >-
+      No root Snapper configuration exists. Review the Btrfs subvolume layout or
+      explicitly enable fedora_snapper_create_root_config.
+  when: not ansible_check_mode
+
+- name: Read existing root snapshots
+  ansible.builtin.command:
+    argv:
+      - snapper
+      - -c
+      - root
+      - list
+  become: true
+  register: fedora_snapper_list
+  changed_when: false
+  check_mode: false
+  when: fedora_snapper_root_config_present | bool
+
+- name: Create the baseline snapshot once
+  ansible.builtin.command:
+    argv:
+      - snapper
+      - -c
+      - root
+      - create
+      - --description
+      - "{{ fedora_snapper_baseline_description }}"
+  become: true
+  changed_when: true
+  when: >-
+    fedora_snapper_root_config_present | bool and
+    fedora_snapper_baseline_description not in (fedora_snapper_list.stdout | default(''))
