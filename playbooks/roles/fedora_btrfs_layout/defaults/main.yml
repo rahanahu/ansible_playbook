@@ -5,6 +5,8 @@ fedora_btrfs_layout_flatpak: false
 fedora_btrfs_layout_docker: false
 fedora_btrfs_layout_containerd: false
 fedora_btrfs_layout_libvirt_images: false
+fedora_btrfs_layout_podman_root: false
+fedora_btrfs_layout_podman_rootless: false
 
 fedora_btrfs_layout_top_mountpoint: /run/ansible-btrfs-top
 
@@ -39,3 +41,15 @@ fedora_btrfs_layout_subvolumes:
     enabled: "{{ fedora_btrfs_layout_libvirt_images }}"
     services: []
     mode: "0711"
+  - name: podman-root
+    mountpoint: /var/lib/containers/storage
+    enabled: "{{ fedora_btrfs_layout_podman_root }}"
+    services: [podman.socket]
+    mode: "0755"
+  - name: podman-rootless
+    mountpoint: "{{ target_home | default('') }}/.local/share/containers/storage"
+    enabled: "{{ fedora_btrfs_layout_podman_rootless }}"
+    services: []
+    mode: "0700"
+    owner: "{{ target_user | default('root') }}"
+    group: "{{ target_user | default('root') }}"

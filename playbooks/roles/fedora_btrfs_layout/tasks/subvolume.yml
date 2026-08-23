@@ -72,7 +72,9 @@
   ansible.builtin.file:
     path: "{{ item.mountpoint }}"
     state: directory
-    mode: "0755"
+    mode: "{{ item.mode | default('0755') }}"
+    owner: "{{ item.owner | default(omit) }}"
+    group: "{{ item.group | default(omit) }}"
   become: true
   when:
     - not (fedora_btrfs_layout_subvolume_ready | bool)

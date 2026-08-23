@@ -39,11 +39,13 @@ README.md under "Tool update policy".
   `/.snapshots` subvolume left without a configuration file). The two
   guard assertions that detect these states have passed on a healthy host,
   but neither has been triggered against a genuinely inconsistent one.
-- Whether the role fails closed as intended when a target mountpoint is
-  non-empty, including the case where the mountpoint is a symlink, has not
-  been verified.
-- Whether stopping and restarting the Docker and containerd units around
-  the remount works correctly has not been verified.
+- Whether the role fails closed when a target mountpoint is a symlink has
+  not been verified. The non-empty case is confirmed below; the symlink
+  branch of the same assertion has never been triggered.
+- Whether the role can stop a *running* Docker or containerd unit and bring
+  it back afterwards has not been verified. Both real runs happened to
+  start from already-stopped units, so only the "was not running, so do not
+  start it" branch was exercised.
 - Whether services stopped on a failed subvolume setup are actually
   restarted by the `rescue` block added around the mount/permission/SELinux
   steps in `tasks/subvolume.yml` has not been verified.
@@ -117,3 +119,32 @@ README.md under "Tool update policy".
   holding a correct value: with `/var/lib/libvirt/images` manually set to
   `0755`, a run reports `changed=1` and leaves it back at its declared
   `0711`.
+- Five more subvolumes were applied on the same Fedora 44 host:
+  `/var/lib/docker`, `/var/lib/containerd`, `/var/lib/containers/storage`
+  and `~/.local/share/containers/storage`, alongside the existing
+  `/var/lib/libvirt/images`. All five mount from `/etc/fstab` after a
+  reboot, including the rootless Podman one nested under the separate
+  `/home` subvolume, which systemd orders after `/home` on its own.
+- Every mountpoint converged to its declared mode and stayed there across
+  that reboot: `/var/lib/docker` `0710`, `/var/lib/containerd` `0700`,
+  `/var/lib/containers/storage` `0755`, `/var/lib/libvirt/images` `0711`,
+  and `~/.local/share/containers/storage` `0700` owned by the target user.
+  The last one is the only entry that declares `owner`/`group`, so it is
+  also the only exercise of that path.
+- SELinux labels came back correct for all of them after `restorecon`:
+  `container_var_lib_t` for the three under `/var/lib`, `data_home_t` for
+  the rootless Podman store.
+- Both container runtimes work on the new layout: `docker run --rm
+  hello-world` pulls from Docker Hub and runs, and `podman run --rm
+  hello-world` does the same rootless, both after a reboot.
+- The role fails closed on a non-empty mountpoint during a real run, not
+  only under `--check`: two separate runs stopped at the assertion with
+  `changed=0`, left the target untouched, and still unmounted the
+  `subvolid=5` helper through the `always` block.
+- The role does not start services it did not stop: with `podman.socket`
+  inactive and disabled beforehand, applying `podman-root` left it that
+  way.
+- The conditional `target_user` resolution behaves in both directions. It
+  is skipped when `fedora_btrfs_layout_podman_rootless` is false, and when
+  true it resolves the login account and places the mountpoint under that
+  account's home without the username appearing anywhere in the role.

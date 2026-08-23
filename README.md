@@ -358,7 +358,9 @@ ansible-playbook playbooks/fedora_btrfs_layout.yml \
   -e fedora_btrfs_layout_flatpak=true \
   -e fedora_btrfs_layout_docker=true \
   -e fedora_btrfs_layout_containerd=true \
-  -e fedora_btrfs_layout_libvirt_images=true
+  -e fedora_btrfs_layout_libvirt_images=true \
+  -e fedora_btrfs_layout_podman_root=true \
+  -e fedora_btrfs_layout_podman_rootless=true
 ```
 
 `fedora_btrfs_layout_var_log` covers `/var/log`, `fedora_btrfs_layout_var_cache`
@@ -366,8 +368,23 @@ covers `/var/cache`, `fedora_btrfs_layout_flatpak` covers `/var/lib/flatpak`,
 `fedora_btrfs_layout_docker` covers `/var/lib/docker` (stopping and restarting
 `docker.socket`/`docker.service` around the remount),
 `fedora_btrfs_layout_containerd` covers `/var/lib/containerd` (stopping and
-restarting `containerd.service`), and `fedora_btrfs_layout_libvirt_images`
-covers `/var/lib/libvirt/images`.
+restarting `containerd.service`), `fedora_btrfs_layout_libvirt_images`
+covers `/var/lib/libvirt/images`, `fedora_btrfs_layout_podman_root` covers
+rootful Podman storage at `/var/lib/containers/storage` (stopping and
+restarting `podman.socket` around the remount, if present and active), and
+`fedora_btrfs_layout_podman_rootless` covers rootless Podman storage at
+`<target_home>/.local/share/containers/storage`.
+
+Enabling `fedora_btrfs_layout_podman_rootless` resolves `target_user` (and
+therefore `target_home`) via the `target_user` role before the layout runs,
+using the same resolution order as the rest of the repository. Pass
+`-e target_user=<login-user>` to make the intended account explicit rather
+than relying on autodetection. Because the resulting mountpoint lives under
+`/home`, and `/home` is already its own independent Btrfs subvolume outside
+`/`, rootless Podman storage was never covered by a Snapper snapshot of `/`
+in the first place; this entry mainly matters if you snapshot `/home`
+itself, or want to exclude container image/layer churn from a `/home`
+backup.
 
 `services` for `/var/log` is intentionally empty, so remounting it does not
 stop and restart `systemd-journald`. That means an already-running
@@ -380,12 +397,24 @@ stop journald and move things over by hand, which this role deliberately
 does not automate.
 
 Each subvolume's `mode` (`docker` `0710`, `containerd` `0700`,
-`libvirt-images` `0711`, and `var-log`/`var-cache`/`flatpak` `0755`) is a
-declared value, and the role converges the mountpoint to that value on every
-run, after the subvolume is mounted. If the mountpoint previously had a
-different permission mode set on it by hand, that mode is overwritten by the
-declared value. Ownership (`owner`/`group`) is only managed when an item
-explicitly declares it; by default the role leaves ownership unchanged.
+`libvirt-images` `0711`, `podman-root` `0755`, `podman-rootless` `0700`, and
+`var-log`/`var-cache`/`flatpak` `0755`) is a declared value, and the role
+converges the mountpoint to that value on every run, after the subvolume is
+mounted. If the mountpoint previously had a different permission mode set on
+it by hand, that mode is overwritten by the declared value. Ownership
+(`owner`/`group`) is only managed when an item explicitly declares it; by
+default the role leaves ownership unchanged. `podman-rootless` is the only
+built-in entry that declares `owner`/`group` (both `target_user`), since its
+mountpoint must be writable by that user rather than root.
+
+If a mountpoint's parent directory does not already exist, creating the
+mountpoint also creates that parent, and the parent is created with default
+(root) ownership regardless of any `owner`/`group` declared for the
+mountpoint itself. For `podman-rootless` this is not expected to matter in
+practice, because its parent (`~/.local/share/containers`) is normally
+created by Podman itself before this role ever runs, but on a host where it
+does not yet exist the role can leave a root-owned parent directory above a
+user-owned mountpoint.
 
 Snapper only manages the `/` subvolume; it does not gain a configuration for
 any subvolume this role creates, so those paths are not covered by Snapper

@@ -69,6 +69,20 @@
       migration of an existing single-subvolume layout is intentionally
       not supported by this role.
 
+- name: Require a resolved target user for rootless Podman storage
+  ansible.builtin.assert:
+    that:
+      - target_home | default('') | trim | length > 0
+      - target_user | default('') | trim | length > 0
+      - target_user | default('') != 'root'
+    fail_msg: >-
+      fedora_btrfs_layout_podman_rootless requires a resolved, non-root
+      target_home to place the rootless Podman storage mountpoint under
+      (target_user/target_home were not resolved to a non-root account).
+      Pass the intended login user explicitly with
+      -e target_user=<login-user>.
+  when: fedora_btrfs_layout_podman_rootless | bool
+
 - name: Read the root filesystem UUID
   ansible.builtin.command:
     argv:
