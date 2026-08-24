@@ -1,4 +1,8 @@
 # Managed by the ollama Ansible role. Do not edit by hand.
+[Unit]
+RequiresMountsFor={{ ollama_models_root }}
+ConditionPathIsMountPoint={{ ollama_models_root }}
+
 [Service]
 Environment="OLLAMA_MODELS={{ ollama_models_dir }}"
 {% if ollama_gpu_groups_present %}

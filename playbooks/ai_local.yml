@@ -4,6 +4,12 @@
   connection: local
   gather_facts: true
 
+  # The Ollama package contract (a single ROCm-linked `ollama` package) is
+  # validated on Fedora 44 only; require a validated release rather than
+  # continuing on the generic Fedora baseline.
+  vars:
+    fedora_strict_release_check: true
+
   pre_tasks:
     - name: Validate the Fedora release
       ansible.builtin.import_role:

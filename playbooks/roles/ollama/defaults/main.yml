@@ -4,6 +4,21 @@ ollama_packages:
 
 ollama_service: ollama.service
 
+# The Ollama package contract this role depends on was measured on Fedora 44
+# only: a single `ollama` package that hard-requires hipblas and rocblas,
+# with no ollama-base / ollama-rocm / ollama-vulkan split to choose from.
+# A later Fedora release may ship a different package topology, so the role
+# refuses unvalidated releases instead of assuming the layout carries over.
+#
+# playbooks/ai_local.yml separately sets fedora_strict_release_check=true,
+# so fedora_preflight's own strict-release assert currently rejects an
+# unvalidated Fedora release first, before this role's own guard ever runs.
+# The guard below is kept anyway so the role stays self-contained and still
+# fails closed for anyone who imports it directly without that entrypoint.
+ollama_validated_fedora_releases:
+  - 44
+ollama_allow_unvalidated_release: false
+
 # Must match the `ai-models` subvolume mountpoint declared in the
 # fedora_btrfs_layout role's defaults. Overriding this alone will make the
 # preflight check fail, because playbooks/ai_local.yml will still create the

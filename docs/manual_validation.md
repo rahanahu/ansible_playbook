@@ -77,13 +77,40 @@ README.md under "Tool update policy".
 - Whether the `/srv/ai/models` mount comes back from `/etc/fstab` after a
   reboot has not been observed. Every other subvolume in this layout has
   survived a reboot, but `ai-models` was added later and has not.
-- The packaged `ollama.service` uses `Restart=always`, so if the
-  `ai-models` mount is ever absent while Ollama restarts, the service will
-  write models into `/srv/ai/models/ollama` on the root subvolume. A later
-  `playbooks/ai_local.yml` run would then stop at `fedora_btrfs_layout`'s
-  "Refuse to reuse a target mountpoint that already contains data"
-  assertion and require manual recovery. This has not been observed or
-  tested.
+- An earlier version of this document claimed that, because the packaged
+  `ollama.service` uses `Restart=always`, an absent `ai-models` mount would
+  cause the service to silently write models into `/srv/ai/models/ollama`
+  on the root subvolume. That claim was speculative and is withdrawn: with
+  the mount absent, `/srv/ai/models` would be the plain directory hidden
+  underneath the mount. That directory has now been observed
+  directly, by mounting the root filesystem's `subvolid=5` read-only and
+  listing the path underneath: it is `root root` mode `0755`, matching what
+  `fedora_btrfs_layout`'s `ai-models` entry declares. The `ollama` service
+  account (uid 968) therefore could not create
+  `/srv/ai/models/ollama` inside it, so a permission error looks like the
+  more likely failure mode rather than a silent write, but what Ollama
+  actually does after such an EACCES (exit, retry, or fall back to another
+  path) is unknown. The drop-in now declares `RequiresMountsFor` and
+  `ConditionPathIsMountPoint` against `ollama_models_root`; per
+  `systemd.unit(5)`, a failing condition causes systemd to skip starting
+  the unit (the unit is left inactive, not moved into a failed state)
+  rather than starting it against the wrong path. The exact behaviour with
+  the mount absent has still not been observed, because the destructive
+  test (removing the `/etc/fstab` entry) was deliberately not run against
+  a store holding a real model.
+- Only the failing half of the `RequiresMountsFor` story is still
+  second-hand. The working half is now measured directly and recorded
+  below. The degradation to `-.mount` alone, when the target path is not a
+  separate mount, was verified indirectly by observing
+  `logrotate.service`'s `RequiresMountsFor=/var/log` resolve to `-.mount`
+  on this host, because `/var/log` is not a separate mount here. It has not
+  been verified by actually removing the `/srv/ai/models` fstab entry, and
+  that is the case `ConditionPathIsMountPoint` exists to cover.
+- Future Fedora release package topology for Ollama is unknown. The role
+  now refuses unvalidated releases (`ollama_validated_fedora_releases`,
+  currently `[44]`), but whether Fedora 45+ keeps the single
+  ROCm-linked `ollama` package Fedora 44 ships, or splits it the way some
+  other distributions do, has not been investigated.
 - The service account's home, `/var/lib/ollama`, holds the identity keypair
   Ollama generates on first start and is inside the root subvolume, so it
   is captured by root Snapper snapshots. Only the model store is excluded.
@@ -248,12 +275,14 @@ README.md under "Tool update policy".
   ExecStart=/usr/bin/ollama serve, WantedBy=default.target, and
   `u ollama - "Runs Ollama" /var/lib/ollama /sbin/nologin`. The `ollama`
   account did not exist on the host at investigation time.
-- `playbooks/ai_local.yml` was applied on real Fedora 44 hardware and a
-  subsequent run reported `ok=63 changed=0 failed=0 skipped=22`, so the
-  entrypoint is idempotent on an already-converged host. The package task,
-  the model directory, the systemd drop-in and the service enable/start all
-  reported no change on that run, and every subvolume-creation task was
-  skipped because `fedora_btrfs_layout` found the layout already correct.
+- `playbooks/ai_local.yml` was applied on real Fedora 44 hardware. Before
+  the `[Unit]` mount-dependency drop-in and the release guard were added, a
+  second run reported `ok=63 changed=0 failed=0 skipped=22`. After those
+  changes the numbers moved, as expected: the first run reported `ok=75
+  changed=2 failed=0 skipped=21`, and the two changes were exactly "Write
+  the Ollama systemd drop-in" and the "Restart Ollama after the drop-in
+  changes" handler. The daemon-reload handler reported `ok` rather than
+  changed.
 - `/srv/ai/models` is Btrfs subvolume ID 270 with `Parent ID 5` and
   `Top level ID 5`, mounted `subvol=/ai-models` from the LUKS-backed root
   filesystem. Being a top-level subvolume rather than a descendant of the
@@ -326,3 +355,42 @@ README.md under "Tool update policy".
 - `ollama pull` works as an unprivileged user against the system service:
   the CLI only issues the API request, and the service downloads and writes
   the blobs as its own account. No privilege escalation was needed.
+- The entrypoint is still idempotent after the hardening pass. The run
+  immediately following the one above reported `ok=73 changed=0 failed=0
+  skipped=21`, with zero `changed:` lines in the output. The two-task
+  difference against the previous run is the pair of handlers that did not
+  fire.
+- `--check` completes on a converged host: `ok=55 changed=0 failed=0
+  skipped=39`, with no failed tasks, no undefined-variable errors and no
+  persistent mutation. The check-mode explanation tasks behave as designed:
+  the Btrfs layout verification and the Ollama smoke test both print why
+  they are skipped, while the Ollama subvolume-check explanation is itself
+  skipped because the subvolume is genuinely present and the check passed.
+- `RequiresMountsFor` reached the effective configuration and does order
+  Ollama after the mount. Before the change `RequiresMountsFor` was empty
+  and `After=` contained no mount unit; after it, `systemctl show
+  ollama.service` reports `RequiresMountsFor=/srv/ai/models` with
+  `srv-ai-models.mount` present in both `Requires=` and `After=`.
+- Both `srv-ai-models.mount` and `-.mount` appear in those lists, because
+  systemd adds a dependency for every mount along the path: `/srv/ai` and
+  `/srv` are not separate mounts, so the walk continues up to `/`. This is
+  the same mechanism that leaves only `-.mount` behind when the target
+  itself is not a mount point, which is what makes `RequiresMountsFor`
+  insufficient on its own.
+- A drop-in `[Unit]` section merges with the packaged one rather than
+  replacing it. `systemctl cat ollama.service` shows the packaged
+  `After=network-online.target` and the drop-in's `RequiresMountsFor` and
+  `ConditionPathIsMountPoint` side by side, and the effective `After=`
+  contains both `network-online.target` and `srv-ai-models.mount`.
+- `ConditionPathIsMountPoint=/srv/ai/models` is present in `systemctl cat
+  ollama.service`, and `ConditionResult=yes` with the mount in place.
+  `systemctl show` never exposes `Condition*` directives, so `systemctl
+  cat` is the only way to confirm the line reached the manager.
+- `systemd-analyze verify ollama.service` exits 0 with no output against
+  the applied drop-in, so systemd is not silently ignoring any directive in
+  it. That check earns its place: rendering the same drop-in with
+  `ConditionPathIsMountPoin=` (one character short) into a scratch unit
+  directory still exits 0, printing only `Unknown key
+  'ConditionPathIsMountPoin' in section [Unit], ignoring.` — a typo would
+  otherwise silently remove the protection while every other check stayed
+  green.

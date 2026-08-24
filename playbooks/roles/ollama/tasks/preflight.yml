@@ -7,6 +7,31 @@
       This role installs the Fedora `ollama` package only. It does not
       support any other distribution.
 
+- name: Require a validated Fedora release for the Ollama role
+  ansible.builtin.assert:
+    that:
+      - >-
+        (ansible_facts['distribution_major_version'] | int) in
+        (ollama_validated_fedora_releases | map('int') | list)
+        or (ollama_allow_unvalidated_release | bool)
+    fail_msg: |-
+      Fedora {{ ansible_facts['distribution_major_version'] }} has not been
+      validated for the Ollama role.
+
+      Validated releases:
+        {{ ollama_validated_fedora_releases | join(', ') }}
+
+      The single-package, ROCm-linked Ollama layout this role depends on was
+      measured on the validated release(s) only and may not hold on a newer
+      Fedora.
+
+      playbooks/ai_local.yml also sets fedora_strict_release_check=true, so
+      fedora_preflight's own strict-release assert rejects an unvalidated
+      Fedora release before this role ever runs. Both of the following are
+      required together to continue at your own risk:
+        -e fedora_strict_release_check=false
+        -e ollama_allow_unvalidated_release=true
+
 - name: Read the mount source path of the root filesystem
   ansible.builtin.command:
     argv:

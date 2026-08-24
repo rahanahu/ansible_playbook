@@ -511,6 +511,27 @@ ansible-playbook playbooks/ai_local.yml -i localhost, -c local -K
 Models live under `/srv/ai/models`. The playbook enables the
 `fedora_btrfs_layout` `ai-models` subvolume, so `/srv/ai/models` is an
 independent Btrfs subvolume and is not included in root Snapper snapshots.
+Ollama is explicitly dependent on and ordered after that mount: the
+systemd drop-in declares `RequiresMountsFor` against it. The service must
+not fall back to running against a plain root-subvolume directory, so the
+drop-in also declares `ConditionPathIsMountPoint`; if `/srv/ai/models` is
+ever not a mount point, systemd skips starting the unit rather than
+starting it against the wrong path.
+
+Fedora 44 is the currently validated Ollama package layout. The playbook
+sets `fedora_strict_release_check=true`, so `fedora_preflight`'s own
+strict-release assert rejects an unvalidated Fedora release during
+`pre_tasks`, before the `ollama` role's separate
+`ollama_validated_fedora_releases` guard (currently `[44]`) ever runs.
+`-e ollama_allow_unvalidated_release=true` on its own therefore does
+nothing; continuing on an unvalidated release at your own risk requires
+both flags together:
+
+```bash
+ansible-playbook playbooks/ai_local.yml -i localhost, -c local -K \
+  -e fedora_strict_release_check=false \
+  -e ollama_allow_unvalidated_release=true
+```
 
 Selected Ollama backend: Fedora-native ROCm. Fedora 44 ships a single
 `ollama` package (0.12.11-4.fc44) that hard-requires hipblas and rocblas;

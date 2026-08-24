@@ -57,6 +57,138 @@
     - ollama_run_smoke_test | bool
     - ollama_unit_present | bool
 
+- name: Resolve the escaped systemd mount unit name for the model storage root
+  ansible.builtin.command:
+    argv:
+      - systemd-escape
+      - --path
+      - --suffix=mount
+      - "{{ ollama_models_root }}"
+  register: ollama_models_root_mount_unit
+  changed_when: false
+  check_mode: false
+  when:
+    - not ansible_check_mode
+    - ollama_run_smoke_test | bool
+    - ollama_unit_present | bool
+
+- name: Read the effective Ollama mount dependency configuration
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - show
+      - "{{ ollama_service }}"
+      - --property=RequiresMountsFor
+      - --property=After
+      - --property=Requires
+  become: true
+  register: ollama_effective_mount_dependency
+  changed_when: false
+  check_mode: false
+  when:
+    - not ansible_check_mode
+    - ollama_run_smoke_test | bool
+    - ollama_unit_present | bool
+
+- name: Record the escaped mount unit name for the model storage root
+  ansible.builtin.set_fact:
+    ollama_models_root_mount_unit_name: "{{ ollama_models_root_mount_unit.stdout | default('') | trim }}"
+  changed_when: false
+  when:
+    - not ansible_check_mode
+    - ollama_run_smoke_test | bool
+    - ollama_unit_present | bool
+
+- name: Confirm the mount dependency reached the effective configuration
+  ansible.builtin.assert:
+    that:
+      - >-
+        ollama_models_root in
+        (ollama_effective_mount_dependency.stdout | default(''))
+      - >-
+        ollama_models_root_mount_unit_name in
+        (ollama_effective_mount_dependency.stdout | default(''))
+      - ollama_models_root_mount_unit_name | length > 0
+    fail_msg: >-
+      {{ ollama_models_root }} and/or the escaped mount unit name
+      {{ ollama_models_root_mount_unit_name }} were not both found, as
+      substrings, in the combined stdout of `systemctl show
+      {{ ollama_service }} --property=RequiresMountsFor
+      --property=After --property=Requires`. Observed:
+      {{ ollama_effective_mount_dependency.stdout | default('') }}
+  when:
+    - not ansible_check_mode
+    - ollama_run_smoke_test | bool
+    - ollama_unit_present | bool
+
+- name: Read the effective Ollama unit file, including drop-ins
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - cat
+      - "{{ ollama_service }}"
+  become: true
+  register: ollama_effective_unit_file
+  changed_when: false
+  check_mode: false
+  when:
+    - not ansible_check_mode
+    - ollama_run_smoke_test | bool
+    - ollama_unit_present | bool
+
+- name: Confirm ConditionPathIsMountPoint reached the effective unit file
+  ansible.builtin.assert:
+    that:
+      - >-
+        ('ConditionPathIsMountPoint=' + ollama_models_root) in
+        (ollama_effective_unit_file.stdout | default(''))
+    fail_msg: >-
+      ConditionPathIsMountPoint={{ ollama_models_root }} was not found in
+      `systemctl cat {{ ollama_service }}`. systemctl show does not expose
+      Condition* directives at all (ConditionResult=yes is also reported
+      for units with no conditions), so this is the only check that
+      confirms the drop-in's ConditionPathIsMountPoint line actually
+      reached the manager. Observed:
+      {{ ollama_effective_unit_file.stdout | default('') }}
+  when:
+    - not ansible_check_mode
+    - ollama_run_smoke_test | bool
+    - ollama_unit_present | bool
+
+- name: Verify the effective Ollama unit for silently ignored directives
+  ansible.builtin.command:
+    argv:
+      - systemd-analyze
+      - verify
+      - "{{ ollama_service }}"
+  become: true
+  register: ollama_unit_verify
+  changed_when: false
+  check_mode: false
+  failed_when: false
+  when:
+    - not ansible_check_mode
+    - ollama_run_smoke_test | bool
+    - ollama_unit_present | bool
+
+- name: Confirm no directive in the drop-in was silently ignored by systemd
+  ansible.builtin.assert:
+    that:
+      - "'Unknown key' not in (ollama_unit_verify.stdout | default(''))"
+      - "'Unknown key' not in (ollama_unit_verify.stderr | default(''))"
+    fail_msg: >-
+      `systemd-analyze verify {{ ollama_service }}` reported an "Unknown
+      key" warning. systemd silently ignores unrecognized keys in a
+      [Unit]/[Service] section rather than failing, so a typo in the
+      drop-in (for example ConditionPathIsMountPoin=) would otherwise
+      pass every other check in this file while providing no actual
+      protection. stdout: {{ ollama_unit_verify.stdout | default('') }}
+      stderr: {{ ollama_unit_verify.stderr | default('') }}
+  when:
+    - not ansible_check_mode
+    - ollama_run_smoke_test | bool
+    - ollama_unit_present | bool
+
 - name: Query the Ollama API for its version
   ansible.builtin.uri:
     url: "{{ ollama_api_url }}"
