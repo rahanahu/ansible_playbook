@@ -1,0 +1,10 @@
+---
+- name: Create the Ollama model directory
+  ansible.builtin.file:
+    path: "{{ ollama_models_dir }}"
+    state: directory
+    owner: "{{ ollama_service_user }}"
+    group: "{{ ollama_service_group }}"
+    mode: "{{ ollama_models_mode }}"
+  become: true
+  when: ollama_unit_present | bool

@@ -1,0 +1,37 @@
+---
+- name: Read the group database
+  ansible.builtin.getent:
+    database: group
+  check_mode: false
+  when: ollama_unit_present | bool
+
+- name: Record which GPU access groups are present on this host
+  ansible.builtin.set_fact:
+    ollama_gpu_groups_present: >-
+      {{ ollama_gpu_groups | select('in', ansible_facts.getent_group | default({}) | list) | list }}
+  changed_when: false
+  when: ollama_unit_present | bool
+
+- name: Ensure the Ollama systemd drop-in directory exists
+  ansible.builtin.file:
+    path: "{{ ollama_dropin_dir }}"
+    state: directory
+    mode: "0755"
+  become: true
+  when: ollama_unit_present | bool
+
+- name: Write the Ollama systemd drop-in
+  ansible.builtin.template:
+    src: ollama-dropin.conf.j2
+    dest: "{{ ollama_dropin_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  when: ollama_unit_present | bool
+  notify:
+    - Reload systemd after the Ollama drop-in changes
+    - Restart Ollama after the drop-in changes
+
+- name: Apply the Ollama systemd drop-in immediately
+  ansible.builtin.meta: flush_handlers

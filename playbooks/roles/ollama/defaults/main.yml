@@ -1,0 +1,38 @@
+---
+ollama_packages:
+  - ollama
+
+ollama_service: ollama.service
+
+# Must match the `ai-models` subvolume mountpoint declared in the
+# fedora_btrfs_layout role's defaults. Overriding this alone will make the
+# preflight check fail, because playbooks/ai_local.yml will still create the
+# subvolume at the fedora_btrfs_layout mountpoint.
+ollama_models_root: /srv/ai/models
+ollama_models_dir: "{{ ollama_models_root }}/ollama"
+ollama_models_mode: "0755"
+
+ollama_manage_service: true
+ollama_service_enabled: true
+ollama_service_state: started
+
+# Supplementary groups that own the DRM render nodes and /dev/kfd, which the
+# ROCm compute path needs. The primary DRM card nodes (group `video`) are
+# deliberately not granted: they are not used for compute.
+ollama_gpu_groups:
+  - render
+
+ollama_dropin_dir: "/etc/systemd/system/{{ ollama_service }}.d"
+ollama_dropin_path: "{{ ollama_dropin_dir }}/10-ansible-ollama.conf"
+
+ollama_run_smoke_test: true
+ollama_smoke_test_retries: 15
+ollama_smoke_test_delay: 4
+ollama_api_url: http://127.0.0.1:11434/api/version
+
+# Internal facts resolved at run time; do not set these directly.
+ollama_unit_present: false
+ollama_service_user: ""
+ollama_service_group: ""
+ollama_gpu_groups_present: []
+ollama_effective_supplementary_groups: []

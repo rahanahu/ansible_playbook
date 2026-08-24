@@ -1,0 +1,28 @@
+---
+- name: Validate the Ollama storage and Btrfs prerequisites
+  ansible.builtin.import_tasks:
+    file: preflight.yml
+
+- name: Install the Fedora Ollama packages
+  ansible.builtin.import_tasks:
+    file: packages.yml
+
+- name: Resolve the packaged Ollama service account
+  ansible.builtin.import_tasks:
+    file: account.yml
+
+- name: Create the Ollama model storage directory
+  ansible.builtin.import_tasks:
+    file: storage.yml
+
+- name: Configure the Ollama systemd drop-in
+  ansible.builtin.import_tasks:
+    file: configure.yml
+
+- name: Enable and start the Ollama service
+  ansible.builtin.import_tasks:
+    file: service.yml
+
+- name: Verify the running Ollama service
+  ansible.builtin.import_tasks:
+    file: verify.yml

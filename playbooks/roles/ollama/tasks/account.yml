@@ -1,0 +1,102 @@
+---
+- name: Check whether the packaged Ollama systemd unit exists
+  ansible.builtin.stat:
+    path: "/usr/lib/systemd/system/{{ ollama_service }}"
+  become: true
+  register: ollama_unit_stat
+  check_mode: false
+
+- name: Record whether the packaged Ollama systemd unit is present
+  ansible.builtin.set_fact:
+    ollama_unit_present: "{{ ollama_unit_stat.stat.exists | default(false) }}"
+  changed_when: false
+
+- name: Explain why remaining Ollama configuration is skipped in check mode
+  ansible.builtin.debug:
+    msg: >-
+      Skipping the remaining Ollama configuration in check mode because the
+      package was not really installed, so {{ ollama_service }}'s unit file
+      does not exist yet.
+  when:
+    - ansible_check_mode
+    - not (ollama_unit_present | bool)
+
+- name: Require the packaged Ollama systemd unit
+  ansible.builtin.assert:
+    that:
+      - ollama_unit_present | bool
+    fail_msg: >-
+      The ollama package did not provide {{ ollama_service }}.
+  when: not ansible_check_mode
+
+- name: Read the packaged Ollama unit's User and Group
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - show
+      - "{{ ollama_service }}"
+      - --property=User
+      - --property=Group
+  become: true
+  register: ollama_show
+  changed_when: false
+  check_mode: false
+  when: ollama_unit_present | bool
+
+- name: Resolve the packaged Ollama service account and group
+  ansible.builtin.set_fact:
+    ollama_service_user: >-
+      {{ ollama_show.stdout | default('')
+         | regex_search('^User=(.*)$', '\1', multiline=True)
+         | default([''], true) | first | trim }}
+    ollama_service_group: >-
+      {{ ollama_show.stdout | default('')
+         | regex_search('^Group=(.*)$', '\1', multiline=True)
+         | default([''], true) | first | trim }}
+  changed_when: false
+  when: ollama_unit_present | bool
+
+- name: Require a resolved Ollama service user and group
+  ansible.builtin.assert:
+    that:
+      - ollama_service_user | length > 0
+      - ollama_service_group | length > 0
+    fail_msg: >-
+      Could not resolve User/Group from `systemctl show {{ ollama_service }}`.
+  when: ollama_unit_present | bool
+
+- name: Check whether the Ollama service account exists
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ ollama_service_user }}"
+    fail_key: false
+  when: ollama_unit_present | bool
+  check_mode: false
+
+- name: Require the Ollama service account to exist
+  ansible.builtin.assert:
+    that:
+      - (ansible_facts.getent_passwd | default({})).get(ollama_service_user) is not none
+    fail_msg: >-
+      The account ({{ ollama_service_user }}) declared by the packaged
+      {{ ollama_service }} unit does not exist. The ollama package's
+      sysusers.d entry may not have been applied.
+  when: ollama_unit_present | bool
+
+- name: Check whether the Ollama service group exists
+  ansible.builtin.getent:
+    database: group
+    key: "{{ ollama_service_group }}"
+    fail_key: false
+  when: ollama_unit_present | bool
+  check_mode: false
+
+- name: Require the Ollama service group to exist
+  ansible.builtin.assert:
+    that:
+      - (ansible_facts.getent_group | default({})).get(ollama_service_group) is not none
+    fail_msg: >-
+      The group ({{ ollama_service_group }}) declared by the packaged
+      {{ ollama_service }} unit does not exist. The ollama package's
+      sysusers.d entry may not have been applied.
+  when: ollama_unit_present | bool

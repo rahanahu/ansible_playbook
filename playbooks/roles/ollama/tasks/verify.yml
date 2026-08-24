@@ -1,0 +1,100 @@
+---
+- name: Explain why the Ollama smoke test is skipped in check mode
+  ansible.builtin.debug:
+    msg: >-
+      Skipping the Ollama smoke test in check mode because check mode
+      cannot install the package or run the service.
+  when:
+    - ansible_check_mode
+    - ollama_run_smoke_test | bool
+
+- name: Read the effective Ollama environment
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - show
+      - "{{ ollama_service }}"
+      - --property=Environment
+      - --property=SupplementaryGroups
+  become: true
+  register: ollama_effective_environment
+  changed_when: false
+  check_mode: false
+  when:
+    - not ansible_check_mode
+    - ollama_run_smoke_test | bool
+    - ollama_unit_present | bool
+
+- name: Record the effective Ollama supplementary groups
+  ansible.builtin.set_fact:
+    ollama_effective_supplementary_groups: >-
+      {{ ollama_effective_environment.stdout | default('')
+         | regex_search('^SupplementaryGroups=(.*)$', '\1', multiline=True)
+         | default([''], true) | first | trim | split() }}
+  changed_when: false
+  when:
+    - not ansible_check_mode
+    - ollama_run_smoke_test | bool
+    - ollama_unit_present | bool
+
+- name: Confirm the systemd drop-in is in effect
+  ansible.builtin.assert:
+    that:
+      - >-
+        ('OLLAMA_MODELS=' + ollama_models_dir) in
+        (ollama_effective_environment.stdout | default(''))
+      - >-
+        (ollama_gpu_groups_present
+         | difference(ollama_effective_supplementary_groups)) | length == 0
+    fail_msg: >-
+      The Ollama systemd drop-in is not in effect: OLLAMA_MODELS={{ ollama_models_dir }}
+      was not found in `systemctl show {{ ollama_service }} --property=Environment`,
+      or the expected SupplementaryGroups ({{ ollama_gpu_groups_present | join(' ') }})
+      were not all present in the observed SupplementaryGroups
+      ({{ ollama_effective_supplementary_groups | join(' ') }}).
+  when:
+    - not ansible_check_mode
+    - ollama_run_smoke_test | bool
+    - ollama_unit_present | bool
+
+- name: Query the Ollama API for its version
+  ansible.builtin.uri:
+    url: "{{ ollama_api_url }}"
+    return_content: true
+  register: ollama_api_version
+  retries: "{{ ollama_smoke_test_retries }}"
+  delay: "{{ ollama_smoke_test_delay }}"
+  until: ollama_api_version is success
+  changed_when: false
+  check_mode: false
+  when:
+    - not ansible_check_mode
+    - ollama_run_smoke_test | bool
+    - ollama_unit_present | bool
+    - ollama_manage_service | bool
+
+- name: Confirm the Ollama API reported a version
+  ansible.builtin.assert:
+    that:
+      - "'version' in (ollama_api_version.json | default({}))"
+    fail_msg: >-
+      The Ollama API at {{ ollama_api_url }} did not return a `version`
+      field.
+  when:
+    - not ansible_check_mode
+    - ollama_run_smoke_test | bool
+    - ollama_unit_present | bool
+    - ollama_manage_service | bool
+
+- name: Report the observed Ollama version
+  ansible.builtin.debug:
+    msg: >-
+      Ollama API reports version {{ (ollama_api_version.json | default({})).version | default('unknown') }}.
+      A successful API response proves the service runs; it does NOT prove
+      GPU acceleration is in use. Confirm the GPU backend selection from
+      `journalctl -u {{ ollama_service }}`.
+  when:
+    - not ansible_check_mode
+    - ollama_run_smoke_test | bool
+    - ollama_unit_present | bool
+    - ollama_manage_service | bool

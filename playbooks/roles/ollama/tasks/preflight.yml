@@ -1,0 +1,70 @@
+---
+- name: Require Fedora for the Ollama role
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['distribution'] == 'Fedora'
+    fail_msg: >-
+      This role installs the Fedora `ollama` package only. It does not
+      support any other distribution.
+
+- name: Read the mount source path of the root filesystem
+  ansible.builtin.command:
+    argv:
+      - findmnt
+      - -n
+      - -o
+      - FSROOT
+      - /
+  register: ollama_root_fsroot
+  changed_when: false
+  check_mode: false
+
+- name: Read the mount status of the Ollama model storage root
+  ansible.builtin.command:
+    argv:
+      - findmnt
+      - -n
+      - --first-only
+      - -o
+      - FSTYPE,UUID,FSROOT
+      - "{{ ollama_models_root }}"
+  become: true
+  register: ollama_models_root_status
+  changed_when: false
+  check_mode: false
+  failed_when: false
+
+- name: Record whether the model storage root is an independent Btrfs subvolume
+  ansible.builtin.set_fact:
+    ollama_models_subvolume_ok: >-
+      {{ ollama_models_root_status.rc == 0 and
+         ((ollama_models_root_status.stdout.split() + ['', '', ''])[0] | default('')) == 'btrfs' and
+         ((ollama_models_root_status.stdout.split() + ['', '', ''])[1] | default('')) | length > 0 and
+         ((ollama_models_root_status.stdout.split() + ['', '', ''])[2] | default('')) | length > 0 and
+         ((ollama_models_root_status.stdout.split() + ['', '', ''])[2] | default('')) !=
+         (ollama_root_fsroot.stdout | trim) and
+         not (((ollama_models_root_status.stdout.split() + ['', '', ''])[2] | default(''))
+              .startswith((ollama_root_fsroot.stdout | trim | regex_replace('/$', '')) ~ '/')) }}
+  changed_when: false
+
+- name: Explain why the Btrfs subvolume check is skipped in check mode
+  ansible.builtin.debug:
+    msg: >-
+      Skipping the Btrfs subvolume check for {{ ollama_models_root }} in
+      check mode because check mode cannot create or mount the subvolume.
+      A normal run of fedora_btrfs_layout must apply the layout first.
+  when:
+    - ansible_check_mode
+    - not (ollama_models_subvolume_ok | bool)
+
+- name: Require the model storage root to be an independent Btrfs subvolume
+  ansible.builtin.assert:
+    that:
+      - ollama_models_subvolume_ok | bool
+    fail_msg: >-
+      {{ ollama_models_root }} is not mounted from a Btrfs subvolume
+      independent of /. Models placed there would be captured by root
+      Snapper snapshots. Run playbooks/ai_local.yml, which enables the
+      fedora_btrfs_layout `ai-models` subvolume, rather than creating the
+      subvolume by hand. This role never creates a subvolume itself.
+  when: not ansible_check_mode

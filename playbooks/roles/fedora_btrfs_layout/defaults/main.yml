@@ -7,6 +7,7 @@ fedora_btrfs_layout_containerd: false
 fedora_btrfs_layout_libvirt_images: false
 fedora_btrfs_layout_podman_root: false
 fedora_btrfs_layout_podman_rootless: false
+fedora_btrfs_layout_ai_models: false
 
 fedora_btrfs_layout_top_mountpoint: /run/ansible-btrfs-top
 
@@ -53,3 +54,8 @@ fedora_btrfs_layout_subvolumes:
     mode: "0700"
     owner: "{{ target_user | default('root') }}"
     group: "{{ target_user | default('root') }}"
+  - name: ai-models
+    mountpoint: /srv/ai/models
+    enabled: "{{ fedora_btrfs_layout_ai_models }}"
+    services: [ollama.service]
+    mode: "0755"

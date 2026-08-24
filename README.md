@@ -15,6 +15,7 @@ workstations and Fedora LXC guests.
 | Configure one user's home environment | `playbooks/user.yml` |
 | Build the complete developer environment | `playbooks/dev_pc.yml` |
 | Build Hazkey after validating Fcitx5/Mozc | `playbooks/hazkey.yml` |
+| Set up the local AI environment (opt-in) | `playbooks/ai_local.yml` |
 
 For an ordinary Fedora desktop, use this one command as the normal login user:
 
@@ -496,6 +497,46 @@ kernel version that exists both in `/boot` and under `/usr/lib/modules`; if
 no matching kernel remains in `/boot`, recovering may require booting rescue
 media and reinstalling a kernel package by hand. This is a known limitation
 of Fedora's Btrfs/Snapper setup that `fedora_btrfs_layout` does not solve.
+
+### Local AI (Ollama)
+
+Local AI is opt-in. Nothing in `playbooks/fedora_workstation.yml`,
+`playbooks/fedora_system.yml`, `playbooks/dev_pc.yml`, or
+`playbooks/fedora_lxc.yml` installs it. Run it explicitly:
+
+```bash
+ansible-playbook playbooks/ai_local.yml -i localhost, -c local -K
+```
+
+Models live under `/srv/ai/models`. The playbook enables the
+`fedora_btrfs_layout` `ai-models` subvolume, so `/srv/ai/models` is an
+independent Btrfs subvolume and is not included in root Snapper snapshots.
+
+Selected Ollama backend: Fedora-native ROCm. Fedora 44 ships a single
+`ollama` package (0.12.11-4.fc44) that hard-requires hipblas and rocblas;
+`ollama-base`, `ollama-rocm` and `ollama-vulkan` do not exist in Fedora, so
+no CPU-only or Vulkan package variant can be selected. That is the reason
+this role has no backend variable.
+
+Fedora package set pulled in: `ollama` plus 21 further Fedora-native ROCm
+userspace packages (`rocm-hip`, `rocblas`, `rocsolver`, `hipblas`, `hipcc`,
+`rocm-runtime`, `rocm-comgr`, `rocm-device-libs`, and the `rocm-clang`/
+`rocm-llvm`/`rocm-libc++` sets). Roughly 2 GiB downloaded, about 5 GiB
+installed.
+
+ROCm/Vulkan strategy: the AMD official repository, `amdgpu-install`,
+AMDGPU-PRO-style stacks, DKMS `amdgpu`, and `HSA_OVERRIDE_GFX_VERSION` are
+not used. Only Fedora native packages are installed. The measured
+`dnf install --assumeno ollama` transaction on Fedora 44 installs 22
+packages and removes or replaces none, leaving Fedora Mesa/RADV,
+`vulkan-loader`, `libdrm`, and the kernel `amdgpu` driver in place; the
+desktop and game graphics stack stays Fedora Mesa/RADV.
+
+The ROCm userspace itself installs under `/usr` and therefore IS inside
+root Snapper snapshots; only the models under `/srv/ai/models` are
+excluded.
+
+Ansible does not download models. `ollama pull` is left to the user.
 
 ### Hazkey
 

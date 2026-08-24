@@ -1,0 +1,32 @@
+---
+- name: Provision the local AI environment
+  hosts: localhost
+  connection: local
+  gather_facts: true
+
+  pre_tasks:
+    - name: Validate the Fedora release
+      ansible.builtin.import_role:
+        name: fedora_preflight
+        tasks_from: release
+      tags:
+        - always
+        - preflight
+
+  tasks:
+    - name: Place the AI model storage on its own Btrfs subvolume
+      ansible.builtin.import_role:
+        name: fedora_btrfs_layout
+      vars:
+        fedora_btrfs_layout_ai_models: true
+      tags:
+        - ai
+        - btrfs
+        - layout
+
+    - name: Install and configure Ollama
+      ansible.builtin.import_role:
+        name: ollama
+      tags:
+        - ai
+        - ollama

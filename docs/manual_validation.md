@@ -61,6 +61,34 @@ README.md under "Tool update policy".
   - The rejecting side of the `playbooks/fonts.yml` OS assert. It has been
     satisfied on Fedora and on Ubuntu 24.04, but never triggered against an
     unsupported distribution or an older Ubuntu.
+- `playbooks/ai_local.yml` has never been run. Neither first-run behaviour,
+  second-run `changed=0`, nor `--check` has been exercised.
+- The `ai-models` subvolume has not been created; `/srv/ai/models` is not
+  yet a Btrfs subvolume, and its exclusion from root Snapper snapshots has
+  not been observed.
+- The Fedora ROCm packages have not been installed, so the measured
+  transaction preview has not been confirmed against a real transaction.
+- Separately: whether Ollama actually loads a ROCm backend and uses the
+  RX 9070 XT has not been observed. No model has been pulled and
+  `journalctl -u ollama` has never been read. Fedora ROCm packages being
+  installed and Ollama ROCm acceleration actually working on this GPU are
+  two different claims.
+- Whether the systemd drop-in's `OLLAMA_MODELS` and `SupplementaryGroups`
+  take effect, and whether the service can write to
+  `/srv/ai/models/ollama` under SELinux (the mountpoint inherits `/srv`'s
+  `var_t` context and `ollama.service` ships no SELinux policy), has not
+  been verified.
+- Whether Mesa/RADV survives a real ollama installation unchanged has only
+  been predicted from the transaction preview, not confirmed by comparing
+  `rpm -q mesa-dri-drivers mesa-vulkan-drivers vulkan-loader` and
+  `vulkaninfo --summary` before and after a real install.
+- The packaged `ollama.service` uses `Restart=always`, so if the
+  `ai-models` mount is ever absent while Ollama restarts, the service will
+  write models into `/srv/ai/models/ollama` on the root subvolume. A later
+  `playbooks/ai_local.yml` run would then stop at `fedora_btrfs_layout`'s
+  "Refuse to reuse a target mountpoint that already contains data"
+  assertion and require manual recovery. This has not been observed or
+  tested.
 
 ## Confirmed
 
@@ -196,3 +224,27 @@ README.md under "Tool update policy".
   is skipped when `fedora_btrfs_layout_podman_rootless` is false, and when
   true it resolves the login account and places the mountpoint under that
   account's home without the username appearing anywhere in the role.
+- `dnf info` / `dnf repoquery` on Fedora 44 show a single `ollama`
+  0.12.11-4.fc44 package; `ollama-base`, `ollama-rocm` and `ollama-vulkan`
+  return "No matching packages".
+- `dnf repoquery --requires ollama` lists hipblas, rocblas,
+  libamdhip64.so.7, librocblas.so.5, libhipblas.so.3 and user(ollama), so
+  the Fedora build is ROCm-linked and has no CPU-only or Vulkan variant.
+- A `dnf install --assumeno ollama` depsolve installs 22 packages, all from
+  the `fedora` repository, and removes, replaces or downgrades nothing.
+  2 GiB inbound, about 5 GiB installed. mesa*, mesa-vulkan-drivers,
+  vulkan-loader, libdrm, kernel and kernel-modules are untouched, and no
+  AMD official repository or driver package appears.
+- The host GPU is Navi 48 (Radeon RX 9070 XT) on the in-tree amdgpu driver;
+  `/dev/kfd` and `/dev/dri/renderD129` already exist as root:render mode
+  0666, and `rocm-smi` reports `GFX Version: gfx1201`.
+- `dnf repoquery -l rocblas` lists gfx1200 and gfx1201 Tensile libraries, so
+  the installed GPU target is covered by Fedora's rocblas and no
+  `HSA_OVERRIDE_GFX_VERSION` is required.
+- `vulkaninfo --summary` reports AMD Radeon RX 9070 XT (RADV GFX1201) on
+  Mesa 26.1.7 with vulkan-loader 1.4.341 before any change.
+- The packaged unit and sysusers file, read out of the downloaded RPM
+  without installing it, declare User=ollama, Group=ollama,
+  ExecStart=/usr/bin/ollama serve, WantedBy=default.target, and
+  `u ollama - "Runs Ollama" /var/lib/ollama /sbin/nologin`. The `ollama`
+  account did not exist on the host at investigation time.

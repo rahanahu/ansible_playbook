@@ -1,0 +1,11 @@
+---
+- name: Enable and start the Ollama service
+  ansible.builtin.systemd_service:
+    name: "{{ ollama_service }}"
+    enabled: "{{ ollama_service_enabled | bool }}"
+    state: "{{ ollama_service_state }}"
+    daemon_reload: false
+  become: true
+  when:
+    - ollama_manage_service | bool
+    - ollama_unit_present | bool

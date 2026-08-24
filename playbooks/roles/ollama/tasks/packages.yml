@@ -1,0 +1,6 @@
+---
+- name: Install the Fedora Ollama packages
+  ansible.builtin.dnf:
+    name: "{{ ollama_packages }}"
+    state: present
+  become: true

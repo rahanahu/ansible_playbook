@@ -41,7 +41,7 @@ jobs:
       - name: Syntax check canonical entrypoints
         run: |
           entrypoints="fedora_workstation fedora_system fedora_lxc fedora_btrfs_layout"
-          entrypoints="$entrypoints user zsh fonts hazkey dev_pc k3s_pc"
+          entrypoints="$entrypoints user zsh fonts hazkey dev_pc k3s_pc ai_local"
           for p in $entrypoints; do
             ansible-playbook "playbooks/$p.yml" -i localhost, -c local --syntax-check
           done

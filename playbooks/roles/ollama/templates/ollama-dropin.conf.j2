@@ -1,0 +1,6 @@
+# Managed by the ollama Ansible role. Do not edit by hand.
+[Service]
+Environment="OLLAMA_MODELS={{ ollama_models_dir }}"
+{% if ollama_gpu_groups_present %}
+SupplementaryGroups={{ ollama_gpu_groups_present | join(' ') }}
+{% endif %}
