@@ -1,0 +1,10 @@
+---
+- name: Install Japanese font packages from the OS package repositories
+  ansible.builtin.import_tasks:
+    file: packages.yml
+  when: fonts_install_packages | bool
+
+- name: Install Japanese font archives from upstream releases
+  ansible.builtin.import_tasks:
+    file: archives.yml
+  when: fonts_install_archives | bool

@@ -8,6 +8,7 @@ workstations and Fedora LXC guests.
 | Goal | Playbook |
 |---|---|
 | Install only the managed zsh environment | `playbooks/zsh.yml` |
+| Install only Japanese fonts | `playbooks/fonts.yml` |
 | Build a complete Fedora desktop | `playbooks/fedora_workstation.yml` |
 | Configure a Fedora LXC guest | `playbooks/fedora_lxc.yml` |
 | Repair workstation system components only | `playbooks/fedora_system.yml` |
@@ -330,6 +331,74 @@ and Wireshark/nmap use `fedora_install_network_gui_tools=true`.
 The playbook does not change UEFI settings, upgrade or reboot the operating
 system, select KDE virtual-keyboard settings, run games, or apply GPU tuning.
 
+### Japanese fonts
+
+The `fonts` role broadens Japanese font coverage beyond the
+`langpacks-fonts-ja` and Noto emoji fonts already installed by
+`fedora_desktop`. It follows a package-manager-first policy: anything
+packaged by the target OS is installed from its own package manager, and only
+fonts with no OS package are fetched from upstream. It runs as part of
+`playbooks/fedora_system.yml` / `playbooks/fedora_workstation.yml`, or on its
+own via the dedicated `playbooks/fonts.yml` entrypoint, which additionally
+supports Ubuntu 24.04+ and Debian 12+:
+
+```bash
+ansible-playbook playbooks/fonts.yml -i localhost, -c local -K
+```
+
+The package side (`fonts_install_packages`, default `true`) installs from
+`fonts_packages_redhat` on Fedora and `fonts_packages_debian` on Ubuntu/
+Debian. The two lists differ, because not every font packaged for Fedora also
+has a Debian-family package:
+
+- Fedora installs IPA, IPAex, M+, VL Gothic, Sazanami, Motoya, Hanamin, UD
+  fonts, Source Han Code JP, JetBrains Mono, and Hack from Fedora's own
+  repositories.
+- Ubuntu 24.04+/Debian 12+ install BIZ UD, IPA, IPAex, M+, VL Gothic, Motoya,
+  Hanazono, and JetBrains Mono from the distribution's repositories. Sazanami,
+  Hack, and Source Han Code JP are intentionally left out because none of them
+  has a Debian-family package. Ubuntu's M+ package resolves to upstream
+  version 063, newer than the 056 that Fedora's `mplus-*-fonts` packages.
+
+The archive side (`fonts_install_archives`, default `false`) is opt-in
+because it pulls roughly 150 MB from upstream on first run, and is identical
+on every supported OS:
+
+```bash
+ansible-playbook playbooks/fonts.yml \
+  -i localhost, -c local -K \
+  -e fonts_install_archives=true
+```
+
+It installs three fonts not available from any of the package managers above,
+each individually switchable:
+
+- UDEV Gothic, the Nerd Font build (`fonts_install_udev_gothic`, default
+  `true`)
+- HackGen (`fonts_install_hackgen`, default `true`) — the standard build is
+  used rather than the Nerd Font build, because HackGen's Nerd Font release
+  only bundles the four Console variants and omits the plain HackGen faces
+- GenEi Gothic (`fonts_install_genei_gothic`, default `true`)
+
+Nerd Font icon glyphs only need to live in one font actually selected in a
+terminal; UDEV Gothic NF already carries them, so HackGen and GenEi Gothic do
+not need their own Nerd Font builds for icons to show up.
+
+Archive fonts install under `fonts_install_dir` (default
+`/usr/local/share/fonts`), one subdirectory per font, each with a
+`.fonts-version` marker file so unchanged versions are skipped on later runs.
+This applies the same way regardless of OS family. When a release cannot be
+resolved from the GitHub API, the role keeps whatever is already installed and
+warns instead of failing. The role also restores the SELinux context after
+installing archive fonts, but only on RedHat-family systems; Debian-family
+systems skip that step entirely.
+
+The marker filename changed from `.fedora-fonts-version` to `.fonts-version`
+when the Fedora-only role this section documents was renamed to `fonts` and
+gained Debian-family support. Hosts that already installed archive fonts
+under the old marker name will not find the new one, so each archive font is
+reinstalled once on the first run after upgrading.
+
 ### Fedora Btrfs subvolume layout
 
 `playbooks/fedora_btrfs_layout.yml` splits selected paths under `/var` out of
@@ -548,12 +617,15 @@ Follows the latest stable release:
 - Node.js, via nvm at the latest LTS
 - Docker Engine, from Docker's own repository
 - Fedora packages, from the target release's repositories
+- UDEV Gothic (`fonts_udev_gothic_version` pins it)
+- HackGen (`fonts_hackgen_version` pins it)
 
 Pinned:
 
 - Hazkey (`hazkey_version`, `hazkey_update_repository`) — see the Hazkey section above
 - Helm (`helm_version`, `helm_archive_checksums`) — installed from the release archive, not a remote install script
 - k3s (`k3s_version`) — the installer is fetched from the matching release tag rather than the moving `get.k3s.io` endpoint
+- GenEi Gothic (`fonts_genei_gothic_url`, `fonts_genei_gothic_checksum`) — okoneya.jp publishes no release feed for this font, and the archive has not changed since around 2016
 
 ## Notes
 

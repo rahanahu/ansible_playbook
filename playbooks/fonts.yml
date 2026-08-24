@@ -1,0 +1,31 @@
+---
+- name: Install Japanese font packages and optional font archives
+  hosts: localhost
+  connection: local
+  gather_facts: true
+
+  pre_tasks:
+    - name: Require a supported fonts platform
+      ansible.builtin.assert:
+        that:
+          - >-
+            ansible_facts['distribution'] == 'Fedora' or
+            (ansible_facts['distribution'] == 'Ubuntu' and
+             ansible_facts['distribution_version'] is version('24.04', '>=')) or
+            (ansible_facts['distribution'] == 'Debian' and
+             ansible_facts['distribution_major_version'] is version('12', '>='))
+        fail_msg: >-
+          The fonts entrypoint supports Fedora, Ubuntu 24.04+, and Debian 12+
+          only (detected distribution={{ ansible_facts['distribution'] }},
+          version={{ ansible_facts['distribution_version'] }}). Earlier Ubuntu
+          releases are rejected because the fonts-morisawa-bizud-* packages
+          are only available from Ubuntu 24.04 onward.
+      tags:
+        - always
+
+  tasks:
+    - name: Install Japanese font packages and optional font archives
+      ansible.builtin.import_role:
+        name: fonts
+      tags:
+        - fonts

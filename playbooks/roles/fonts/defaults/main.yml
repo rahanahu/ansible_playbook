@@ -1,0 +1,59 @@
+---
+fonts_install_packages: true
+
+fonts_packages_redhat:
+  - mrsw-biz-udgothic-fonts-all
+  - mrsw-biz-udmincho-fonts-all
+  - ipa-gothic-fonts
+  - ipa-mincho-fonts
+  - ipa-pgothic-fonts
+  - ipa-pmincho-fonts
+  - ipa-exgothic-fonts
+  - ipa-exmincho-fonts
+  - mplus-1c-fonts
+  - mplus-1m-fonts
+  - mplus-1mn-fonts
+  - mplus-1p-fonts
+  - mplus-2c-fonts
+  - mplus-2m-fonts
+  - mplus-2p-fonts
+  - vl-gothic-fonts-all
+  - sazanami-fonts-all
+  - motoya-lcedar-fonts
+  - motoya-lmaru-fonts
+  - hanamin-fonts
+  - adobe-source-han-code-jp-fonts
+  - jetbrains-mono-fonts
+  - source-foundry-hack-fonts
+
+# Confirmed present in the Ubuntu 24.04 (noble) repositories. Sazanami, Hack,
+# and Source Han Code JP are intentionally omitted: none of them have a
+# Debian-family package.
+fonts_packages_debian:
+  - fonts-morisawa-bizud-gothic
+  - fonts-morisawa-bizud-mincho
+  - fonts-ipafont
+  - fonts-ipaexfont
+  - fonts-mplus
+  - fonts-vlgothic
+  - fonts-motoya-l-cedar
+  - fonts-motoya-l-maruberi
+  - fonts-hanazono
+  - fonts-jetbrains-mono
+
+# Archive fonts are opt-in: they pull roughly 150 MB from upstream.
+fonts_install_archives: false
+fonts_install_udev_gothic: true
+fonts_install_hackgen: true
+fonts_install_genei_gothic: true
+
+fonts_install_dir: /usr/local/share/fonts
+
+# fonts_udev_gothic_version and fonts_hackgen_version are intentionally not
+# defined here. When unset, the role resolves the latest non-prerelease
+# GitHub release at run time; set either explicitly to pin it.
+
+# Pinned: okoneya.jp publishes no release feed for this font, and it has not
+# moved since around 2016.
+fonts_genei_gothic_url: https://okoneya.jp/font/GenEiGothicAll-1.1a.zip
+fonts_genei_gothic_checksum: "sha256:66889acf44fe932fc53ad2e060c8a8a3e9e4cd8d51e5c64988fb09f7668b152d"

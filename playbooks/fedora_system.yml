@@ -37,6 +37,13 @@
         - system
         - desktop
 
+    - name: Install Japanese font packages and optional font archives
+      ansible.builtin.import_role:
+        name: fonts
+      tags:
+        - system
+        - fonts
+
     - name: Install Fedora CLI and diagnostic tools
       ansible.builtin.import_role:
         name: fedora_cli_tools

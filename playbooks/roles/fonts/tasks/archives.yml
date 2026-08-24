@@ -1,0 +1,427 @@
+---
+# unzip extracts the archives, and fontconfig provides the fc-cache the
+# handler runs afterwards. Both belong here rather than with the font
+# packages: they are only needed on this path, and a minimal host that
+# installs no font packages at all still needs them.
+- name: Install the font archive prerequisites on RedHat-family systems
+  ansible.builtin.dnf:
+    name:
+      - unzip
+      - fontconfig
+    state: present
+  become: true
+  when: ansible_facts['os_family'] == 'RedHat'
+  tags:
+    - system
+    - fonts
+
+- name: Install the font archive prerequisites on Debian-family systems
+  ansible.builtin.apt:
+    name:
+      - unzip
+      - fontconfig
+    state: present
+    update_cache: true
+  become: true
+  when: ansible_facts['os_family'] == 'Debian'
+  tags:
+    - system
+    - fonts
+
+# UDEV Gothic (Nerd Font build) -----------------------------------------
+
+- name: Look up the latest UDEV Gothic release
+  ansible.builtin.uri:
+    url: https://api.github.com/repos/yuru7/udev-gothic/releases/latest
+    return_content: true
+  register: fonts_udev_gothic_release_lookup
+  changed_when: false
+  check_mode: false
+  failed_when: false
+  when:
+    - fonts_install_udev_gothic | bool
+    - fonts_udev_gothic_version is not defined
+  tags:
+    - system
+    - fonts
+
+- name: Check for an existing UDEV Gothic install marker
+  ansible.builtin.stat:
+    path: "{{ fonts_install_dir }}/udev-gothic/.fonts-version"
+  register: fonts_udev_gothic_marker_stat
+  tags:
+    - system
+    - fonts
+
+- name: Read the existing UDEV Gothic install marker
+  ansible.builtin.slurp:
+    src: "{{ fonts_install_dir }}/udev-gothic/.fonts-version"
+  register: fonts_udev_gothic_marker_content
+  when: fonts_udev_gothic_marker_stat.stat.exists
+  tags:
+    - system
+    - fonts
+
+- name: Resolve the effective UDEV Gothic version
+  ansible.builtin.set_fact:
+    fonts_udev_gothic_version_effective: >-
+      {{ fonts_udev_gothic_version
+         | default(fonts_udev_gothic_release_lookup.json.tag_name
+                    if ((fonts_udev_gothic_release_lookup.status | default(0)) == 200 and
+                        not (fonts_udev_gothic_release_lookup.json.prerelease | default(true)))
+                    else '') }}
+    fonts_udev_gothic_installed_version: >-
+      {{ (fonts_udev_gothic_marker_content.content | b64decode | trim)
+         if fonts_udev_gothic_marker_stat.stat.exists
+         else '' }}
+  changed_when: false
+  tags:
+    - system
+    - fonts
+
+- name: Warn that the installed UDEV Gothic version is being kept
+  ansible.builtin.debug:
+    msg: >-
+      Could not resolve the latest UDEV Gothic release from the GitHub API.
+      Keeping whatever is currently installed at
+      {{ fonts_install_dir }}/udev-gothic unchanged, if anything is
+      installed there at all. Set fonts_udev_gothic_version
+      explicitly to pin a version and avoid this lookup.
+  when:
+    - fonts_install_udev_gothic | bool
+    - fonts_udev_gothic_version_effective | length == 0
+  tags:
+    - system
+    - fonts
+
+- name: Manage the UDEV Gothic font archive
+  become: true
+  when:
+    - fonts_install_udev_gothic | bool
+    - fonts_udev_gothic_version_effective | length > 0
+    - fonts_udev_gothic_version_effective != fonts_udev_gothic_installed_version
+  tags:
+    - system
+    - fonts
+  block:
+    - name: Create a temporary directory for the UDEV Gothic archive
+      ansible.builtin.tempfile:
+        state: directory
+        prefix: fonts-udev-gothic-
+      register: fonts_udev_gothic_tmp
+
+    - name: Download the UDEV Gothic release archive
+      vars:
+        font_version: "{{ fonts_udev_gothic_version_effective }}"
+      ansible.builtin.get_url:
+        url: >-
+          {{ 'https://github.com/yuru7/udev-gothic/releases/download/' ~
+             font_version ~ '/UDEVGothic_NF_' ~ font_version ~ '.zip' }}
+        dest: "{{ fonts_udev_gothic_tmp.path }}/UDEVGothic_NF.zip"
+        mode: "0644"
+
+    - name: Extract the UDEV Gothic release archive
+      ansible.builtin.unarchive:
+        src: "{{ fonts_udev_gothic_tmp.path }}/UDEVGothic_NF.zip"
+        dest: "{{ fonts_udev_gothic_tmp.path }}"
+        remote_src: true
+
+    - name: Find the extracted UDEV Gothic font files
+      ansible.builtin.find:
+        paths: "{{ fonts_udev_gothic_tmp.path }}"
+        patterns:
+          - "*.ttf"
+        recurse: true
+      register: fonts_udev_gothic_found_fonts
+
+    - name: Recreate the UDEV Gothic install directory
+      ansible.builtin.file:
+        path: "{{ fonts_install_dir }}/udev-gothic"
+        state: "{{ fonts_udev_gothic_dir_state_item }}"
+        mode: "0755"
+      loop:
+        - absent
+        - directory
+      loop_control:
+        loop_var: fonts_udev_gothic_dir_state_item
+
+    - name: Install the UDEV Gothic font files
+      ansible.builtin.copy:
+        src: "{{ fonts_udev_gothic_font_item.path }}"
+        dest: "{{ fonts_install_dir }}/udev-gothic/{{ fonts_udev_gothic_font_item.path | basename }}"
+        remote_src: true
+        mode: "0644"
+      loop: "{{ fonts_udev_gothic_found_fonts.files }}"
+      loop_control:
+        label: "{{ fonts_udev_gothic_font_item.path | basename }}"
+        loop_var: fonts_udev_gothic_font_item
+      notify:
+        - Refresh the font cache
+        - Restore SELinux context for installed fonts
+
+    - name: Record the installed UDEV Gothic version
+      ansible.builtin.copy:
+        content: "{{ fonts_udev_gothic_version_effective }}"
+        dest: "{{ fonts_install_dir }}/udev-gothic/.fonts-version"
+        mode: "0644"
+
+    - name: Remove the temporary UDEV Gothic archive directory
+      ansible.builtin.file:
+        path: "{{ fonts_udev_gothic_tmp.path }}"
+        state: absent
+
+# HackGen (standard build, not the Nerd Font Console-only build) --------
+
+- name: Look up the latest HackGen release
+  ansible.builtin.uri:
+    url: https://api.github.com/repos/yuru7/HackGen/releases/latest
+    return_content: true
+  register: fonts_hackgen_release_lookup
+  changed_when: false
+  check_mode: false
+  failed_when: false
+  when:
+    - fonts_install_hackgen | bool
+    - fonts_hackgen_version is not defined
+  tags:
+    - system
+    - fonts
+
+- name: Check for an existing HackGen install marker
+  ansible.builtin.stat:
+    path: "{{ fonts_install_dir }}/hackgen/.fonts-version"
+  register: fonts_hackgen_marker_stat
+  tags:
+    - system
+    - fonts
+
+- name: Read the existing HackGen install marker
+  ansible.builtin.slurp:
+    src: "{{ fonts_install_dir }}/hackgen/.fonts-version"
+  register: fonts_hackgen_marker_content
+  when: fonts_hackgen_marker_stat.stat.exists
+  tags:
+    - system
+    - fonts
+
+- name: Resolve the effective HackGen version
+  ansible.builtin.set_fact:
+    fonts_hackgen_version_effective: >-
+      {{ fonts_hackgen_version
+         | default(fonts_hackgen_release_lookup.json.tag_name
+                    if ((fonts_hackgen_release_lookup.status | default(0)) == 200 and
+                        not (fonts_hackgen_release_lookup.json.prerelease | default(true)))
+                    else '') }}
+    fonts_hackgen_installed_version: >-
+      {{ (fonts_hackgen_marker_content.content | b64decode | trim)
+         if fonts_hackgen_marker_stat.stat.exists
+         else '' }}
+  changed_when: false
+  tags:
+    - system
+    - fonts
+
+- name: Warn that the installed HackGen version is being kept
+  ansible.builtin.debug:
+    msg: >-
+      Could not resolve the latest HackGen release from the GitHub API.
+      Keeping whatever is currently installed at
+      {{ fonts_install_dir }}/hackgen unchanged, if anything is
+      installed there at all. Set fonts_hackgen_version explicitly
+      to pin a version and avoid this lookup.
+  when:
+    - fonts_install_hackgen | bool
+    - fonts_hackgen_version_effective | length == 0
+  tags:
+    - system
+    - fonts
+
+- name: Manage the HackGen font archive
+  become: true
+  when:
+    - fonts_install_hackgen | bool
+    - fonts_hackgen_version_effective | length > 0
+    - fonts_hackgen_version_effective != fonts_hackgen_installed_version
+  tags:
+    - system
+    - fonts
+  block:
+    - name: Create a temporary directory for the HackGen archive
+      ansible.builtin.tempfile:
+        state: directory
+        prefix: fonts-hackgen-
+      register: fonts_hackgen_tmp
+
+    - name: Download the HackGen release archive
+      vars:
+        font_version: "{{ fonts_hackgen_version_effective }}"
+      ansible.builtin.get_url:
+        url: >-
+          {{ 'https://github.com/yuru7/HackGen/releases/download/' ~
+             font_version ~ '/HackGen_' ~ font_version ~ '.zip' }}
+        dest: "{{ fonts_hackgen_tmp.path }}/HackGen.zip"
+        mode: "0644"
+
+    - name: Extract the HackGen release archive
+      ansible.builtin.unarchive:
+        src: "{{ fonts_hackgen_tmp.path }}/HackGen.zip"
+        dest: "{{ fonts_hackgen_tmp.path }}"
+        remote_src: true
+
+    - name: Find the extracted HackGen font files
+      ansible.builtin.find:
+        paths: "{{ fonts_hackgen_tmp.path }}"
+        patterns:
+          - "*.ttf"
+        recurse: true
+      register: fonts_hackgen_found_fonts
+
+    - name: Recreate the HackGen install directory
+      ansible.builtin.file:
+        path: "{{ fonts_install_dir }}/hackgen"
+        state: "{{ fonts_hackgen_dir_state_item }}"
+        mode: "0755"
+      loop:
+        - absent
+        - directory
+      loop_control:
+        loop_var: fonts_hackgen_dir_state_item
+
+    - name: Install the HackGen font files
+      ansible.builtin.copy:
+        src: "{{ fonts_hackgen_font_item.path }}"
+        dest: "{{ fonts_install_dir }}/hackgen/{{ fonts_hackgen_font_item.path | basename }}"
+        remote_src: true
+        mode: "0644"
+      loop: "{{ fonts_hackgen_found_fonts.files }}"
+      loop_control:
+        label: "{{ fonts_hackgen_font_item.path | basename }}"
+        loop_var: fonts_hackgen_font_item
+      notify:
+        - Refresh the font cache
+        - Restore SELinux context for installed fonts
+
+    - name: Record the installed HackGen version
+      ansible.builtin.copy:
+        content: "{{ fonts_hackgen_version_effective }}"
+        dest: "{{ fonts_install_dir }}/hackgen/.fonts-version"
+        mode: "0644"
+
+    - name: Remove the temporary HackGen archive directory
+      ansible.builtin.file:
+        path: "{{ fonts_hackgen_tmp.path }}"
+        state: absent
+
+# GenEi Gothic (pinned, no upstream release feed) -----------------------
+
+- name: Check for an existing GenEi Gothic install marker
+  ansible.builtin.stat:
+    path: "{{ fonts_install_dir }}/genei-gothic/.fonts-version"
+  register: fonts_genei_gothic_marker_stat
+  tags:
+    - system
+    - fonts
+
+- name: Read the existing GenEi Gothic install marker
+  ansible.builtin.slurp:
+    src: "{{ fonts_install_dir }}/genei-gothic/.fonts-version"
+  register: fonts_genei_gothic_marker_content
+  when: fonts_genei_gothic_marker_stat.stat.exists
+  tags:
+    - system
+    - fonts
+
+- name: Resolve the effective GenEi Gothic version
+  ansible.builtin.set_fact:
+    # GenEiGothicAll-1.1a.zip has been the only release of this font since
+    # around 2016; okoneya.jp has no release feed to look up a newer one.
+    fonts_genei_gothic_version_effective: "1.1a"
+    fonts_genei_gothic_installed_version: >-
+      {{ (fonts_genei_gothic_marker_content.content | b64decode | trim)
+         if fonts_genei_gothic_marker_stat.stat.exists
+         else '' }}
+  changed_when: false
+  tags:
+    - system
+    - fonts
+
+- name: Manage the GenEi Gothic font archive
+  become: true
+  when:
+    - fonts_install_genei_gothic | bool
+    - fonts_genei_gothic_version_effective != fonts_genei_gothic_installed_version
+  tags:
+    - system
+    - fonts
+  block:
+    - name: Create a temporary directory for the GenEi Gothic archive
+      ansible.builtin.tempfile:
+        state: directory
+        prefix: fonts-genei-gothic-
+      register: fonts_genei_gothic_tmp
+
+    - name: Download the GenEi Gothic release archive
+      ansible.builtin.get_url:
+        url: "{{ fonts_genei_gothic_url }}"
+        dest: "{{ fonts_genei_gothic_tmp.path }}/GenEiGothicAll.zip"
+        checksum: "{{ fonts_genei_gothic_checksum }}"
+        mode: "0644"
+
+    # The archive stores its readme filenames in Shift-JIS. The module lists
+    # members with Python's ZipFile, which decodes them as CP437, and then
+    # fails reading the SELinux context of a path that does not exist under
+    # that name. Restricting extraction to the font files avoids touching
+    # them at all; nothing else in the archive is used anyway.
+    - name: Extract the GenEi Gothic font files
+      ansible.builtin.unarchive:
+        src: "{{ fonts_genei_gothic_tmp.path }}/GenEiGothicAll.zip"
+        dest: "{{ fonts_genei_gothic_tmp.path }}"
+        remote_src: true
+        include:
+          - "*.ttf"
+          - "*.otf"
+
+    - name: Find the extracted GenEi Gothic font files
+      ansible.builtin.find:
+        paths: "{{ fonts_genei_gothic_tmp.path }}"
+        patterns:
+          - "*.ttf"
+          - "*.otf"
+        recurse: true
+      register: fonts_genei_gothic_found_fonts
+
+    - name: Recreate the GenEi Gothic install directory
+      ansible.builtin.file:
+        path: "{{ fonts_install_dir }}/genei-gothic"
+        state: "{{ fonts_genei_gothic_dir_state_item }}"
+        mode: "0755"
+      loop:
+        - absent
+        - directory
+      loop_control:
+        loop_var: fonts_genei_gothic_dir_state_item
+
+    - name: Install the GenEi Gothic font files
+      ansible.builtin.copy:
+        src: "{{ fonts_genei_gothic_font_item.path }}"
+        dest: "{{ fonts_install_dir }}/genei-gothic/{{ fonts_genei_gothic_font_item.path | basename }}"
+        remote_src: true
+        mode: "0644"
+      loop: "{{ fonts_genei_gothic_found_fonts.files }}"
+      loop_control:
+        label: "{{ fonts_genei_gothic_font_item.path | basename }}"
+        loop_var: fonts_genei_gothic_font_item
+      notify:
+        - Refresh the font cache
+        - Restore SELinux context for installed fonts
+
+    - name: Record the installed GenEi Gothic version
+      ansible.builtin.copy:
+        content: "{{ fonts_genei_gothic_version_effective }}"
+        dest: "{{ fonts_install_dir }}/genei-gothic/.fonts-version"
+        mode: "0644"
+
+    - name: Remove the temporary GenEi Gothic archive directory
+      ansible.builtin.file:
+        path: "{{ fonts_genei_gothic_tmp.path }}"
+        state: absent

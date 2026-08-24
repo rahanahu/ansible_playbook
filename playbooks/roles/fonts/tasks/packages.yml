@@ -1,0 +1,21 @@
+---
+- name: Install Japanese font packages on RedHat-family systems
+  ansible.builtin.dnf:
+    name: "{{ fonts_packages_redhat }}"
+    state: present
+  become: true
+  when: ansible_facts['os_family'] == 'RedHat'
+  tags:
+    - system
+    - fonts
+
+- name: Install Japanese font packages on Debian-family systems
+  ansible.builtin.apt:
+    name: "{{ fonts_packages_debian }}"
+    state: present
+    update_cache: true
+  become: true
+  when: ansible_facts['os_family'] == 'Debian'
+  tags:
+    - system
+    - fonts

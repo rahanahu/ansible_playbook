@@ -40,6 +40,8 @@ jobs:
         run: ansible-lint
       - name: Syntax check canonical entrypoints
         run: |
-          for p in fedora_workstation fedora_system fedora_lxc fedora_btrfs_layout user zsh hazkey dev_pc k3s_pc; do
+          entrypoints="fedora_workstation fedora_system fedora_lxc fedora_btrfs_layout"
+          entrypoints="$entrypoints user zsh fonts hazkey dev_pc k3s_pc"
+          for p in $entrypoints; do
             ansible-playbook "playbooks/$p.yml" -i localhost, -c local --syntax-check
           done

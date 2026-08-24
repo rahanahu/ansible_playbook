@@ -51,9 +51,57 @@ README.md under "Tool update policy".
   steps in `tasks/subvolume.yml` has not been verified.
 - Behavior on a host with SELinux disabled, where `restorecon` is now
   skipped, has not been verified.
+- Two parts of the `fonts` role remain unverified:
+  - The fallback path where a GitHub release lookup fails and the role keeps
+    whatever is already installed, warning instead of failing. Successful
+    lookups are confirmed below; the unavailable-network branch is not.
+  - Replacing an already-installed archive font when its resolved version
+    changes. Only the first install and the unchanged re-run have been
+    exercised.
+  - The rejecting side of the `playbooks/fonts.yml` OS assert. It has been
+    satisfied on Fedora and on Ubuntu 24.04, but never triggered against an
+    unsupported distribution or an older Ubuntu.
 
 ## Confirmed
 
+- The `fonts` role (renamed from its earlier Fedora-only name) was run on
+  real Fedora 44 hardware with `fonts_install_archives=true`. The 23 packaged
+  fonts installed, and all three archive fonts landed flattened under
+  `/usr/local/share/fonts/`: UDEV Gothic 16 files, HackGen 8, GenEi Gothic
+  21, each with a `.fedora-fonts-version` marker (now named `.fonts-version`
+  after the rename) recording `v2.2.0`, `v2.10.0` and `1.1a` respectively.
+- The GitHub release lookups resolve real tags: the markers hold the tags
+  the API returned, not values written into the role.
+- A second run reports no changes, so the marker comparison skips both the
+  download and the extraction.
+- `fc-cache` makes the result usable: `fc-list :lang=ja` reports 145 fonts
+  and the new families (BIZ UD, IPAex, GenEi Gothic, HackGen, UDEV Gothic,
+  Motoya, Hanazono) are selectable by name.
+- The Debian-family path works end to end, exercised in a clean
+  `ubuntu:24.04` container under Podman. All ten `fonts_packages_debian`
+  entries install (metapackages expand to fourteen dpkg entries), the three
+  archive fonts land with the same file counts and markers as on Fedora, and
+  the resolved GitHub tags again come from the API rather than the role. A
+  second run reports `changed=0`. The container also ran Ansible 2.16.3,
+  older than the workstation's 2.20.7.
+- The `restorecon` handler is skipped on Debian-family hosts, and the
+  `playbooks/fonts.yml` OS assert passes on both Fedora and Ubuntu 24.04.
+- That container run first exposed a real defect: on a host without
+  `fontconfig`, the `fc-cache` handler failed with `No such file or
+  directory: fc-cache`. Fedora desktops always carry it, so no amount of
+  testing there would have surfaced this. `fontconfig` is now installed
+  alongside `unzip` as an archive-path prerequisite rather than being listed
+  with the font packages, so a host that installs no font packages at all
+  still gets it. Re-verified from a fresh container where `fc-cache` did not
+  initially exist.
+- GenEi Gothic's archive stores its readme filenames in Shift-JIS, which
+  breaks `unarchive`: the module lists members through Python's `ZipFile`,
+  decodes them as CP437, and then fails reading the SELinux context of a
+  path that does not exist under that name. Passing `-O CP932` through
+  `extra_opts` makes it worse, because only the extraction side changes and
+  the two names then disagree. Restricting the task with
+  `include: ["*.ttf", "*.otf"]` avoids the files entirely and is confirmed
+  working.
 - Helm is idempotent across a real v3.21.4 to v4.2.4 upgrade, with the
   second run reporting `changed=0`.
 - Hazkey reaches `changed=0` on a second run with the same pin, and
