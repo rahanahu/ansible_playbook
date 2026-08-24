@@ -61,27 +61,19 @@ README.md under "Tool update policy".
   - The rejecting side of the `playbooks/fonts.yml` OS assert. It has been
     satisfied on Fedora and on Ubuntu 24.04, but never triggered against an
     unsupported distribution or an older Ubuntu.
-- `playbooks/ai_local.yml` has never been run. Neither first-run behaviour,
-  second-run `changed=0`, nor `--check` has been exercised.
-- The `ai-models` subvolume has not been created; `/srv/ai/models` is not
-  yet a Btrfs subvolume, and its exclusion from root Snapper snapshots has
-  not been observed.
-- The Fedora ROCm packages have not been installed, so the measured
-  transaction preview has not been confirmed against a real transaction.
-- Separately: whether Ollama actually loads a ROCm backend and uses the
-  RX 9070 XT has not been observed. No model has been pulled and
-  `journalctl -u ollama` has never been read. Fedora ROCm packages being
-  installed and Ollama ROCm acceleration actually working on this GPU are
-  two different claims.
-- Whether the systemd drop-in's `OLLAMA_MODELS` and `SupplementaryGroups`
-  take effect, and whether the service can write to
-  `/srv/ai/models/ollama` under SELinux (the mountpoint inherits `/srv`'s
-  `var_t` context and `ollama.service` ships no SELinux policy), has not
-  been verified.
-- Whether Mesa/RADV survives a real ollama installation unchanged has only
-  been predicted from the transaction preview, not confirmed by comparing
-  `rpm -q mesa-dri-drivers mesa-vulkan-drivers vulkan-loader` and
-  `vulkaninfo --summary` before and after a real install.
+- The first run of `playbooks/ai_local.yml` was not captured. Only a later
+  run's recap was recorded, so which tasks reported `changed` on a fresh
+  host is unknown; the second-run `changed=0` result is confirmed below.
+- `playbooks/ai_local.yml` has never been run with `--check`, on a host
+  either before or after the real run.
+- No model has been pulled and no inference has been executed, so ROCm
+  *inference* on this GPU remains unproven. What is confirmed below is that
+  Ollama enumerates the card through its ROCm backend at startup; that is
+  device discovery, not a completed GPU computation. These stay separate
+  claims.
+- Whether the `/srv/ai/models` mount comes back from `/etc/fstab` after a
+  reboot has not been observed. Every other subvolume in this layout has
+  survived a reboot, but `ai-models` was added later and has not.
 - The packaged `ollama.service` uses `Restart=always`, so if the
   `ai-models` mount is ever absent while Ollama restarts, the service will
   write models into `/srv/ai/models/ollama` on the root subvolume. A later
@@ -89,6 +81,11 @@ README.md under "Tool update policy".
   "Refuse to reuse a target mountpoint that already contains data"
   assertion and require manual recovery. This has not been observed or
   tested.
+- The service account's home, `/var/lib/ollama`, holds the identity keypair
+  Ollama generates on first start and is inside the root subvolume, so it
+  is captured by root Snapper snapshots. Only the model store is excluded.
+  Whether restoring a root snapshot and thereby reverting that keypair
+  causes any problem has not been investigated.
 
 ## Confirmed
 
@@ -248,3 +245,54 @@ README.md under "Tool update policy".
   ExecStart=/usr/bin/ollama serve, WantedBy=default.target, and
   `u ollama - "Runs Ollama" /var/lib/ollama /sbin/nologin`. The `ollama`
   account did not exist on the host at investigation time.
+- `playbooks/ai_local.yml` was applied on real Fedora 44 hardware and a
+  subsequent run reported `ok=63 changed=0 failed=0 skipped=22`, so the
+  entrypoint is idempotent on an already-converged host. The package task,
+  the model directory, the systemd drop-in and the service enable/start all
+  reported no change on that run, and every subvolume-creation task was
+  skipped because `fedora_btrfs_layout` found the layout already correct.
+- `/srv/ai/models` is Btrfs subvolume ID 270 with `Parent ID 5` and
+  `Top level ID 5`, mounted `subvol=/ai-models` from the LUKS-backed root
+  filesystem. Being a top-level subvolume rather than a descendant of the
+  root subvolume is what keeps it out of root Snapper snapshots.
+- The real DNF transaction matched the `--assumeno` preview exactly. After
+  the run the host carries 23 packages matching
+  `^(ollama|rocm|hip|rocblas|hipblas|rocsolver)`, of which `rocm-smi` was
+  already installed beforehand, leaving the predicted 22 newly installed.
+- Mesa/RADV survived the real installation unchanged, confirmed by
+  comparing identical before/after snapshots rather than by prediction.
+  `mesa-dri-drivers`, `mesa-vulkan-drivers`, `vulkan-loader`, `libdrm` and
+  `mesa-libGL` hold the same versions, and `vulkaninfo --summary` reports
+  the same three devices with the same drivers: AMD Radeon RX 9070 XT
+  (RADV GFX1201), Intel ARL, and llvmpipe, all on Mesa 26.1.7. The running
+  kernel and its amdgpu module were also untouched.
+- The systemd drop-in is in effect, and not merely written to disk.
+  `systemctl show ollama.service` reports
+  `Environment=OLLAMA_MODELS=/srv/ai/models/ollama` and
+  `SupplementaryGroups=render`, and the running process confirms it applied:
+  `/proc/<MainPID>/status` shows `Groups: 105 968`, which resolve to
+  `render` and `ollama`. The `render` membership exists only for the
+  service process; `id ollama` does not show it, because systemd applies
+  supplementary groups at start rather than through `/etc/group`.
+- Ollama loads its ROCm backend and enumerates the discrete GPU. The
+  journal records `library=ROCm compute=gfx1201 name=ROCm0
+  description="AMD Radeon RX 9070 XT" type=discrete total="15.9 GiB"`,
+  which is not a CPU fallback. `HSA_OVERRIDE_GFX_VERSION` is empty in the
+  server's own environment dump, so the card is driven at its native gfx
+  target with no override, as predicted from Fedora's rocblas carrying
+  gfx1201 libraries. This confirms discovery only; see the corresponding
+  Open item about inference.
+- SELinux did not block the service. `/srv/ai/models` is `var_t` and
+  `/srv/ai/models/ollama` is `var_t` owned `ollama:ollama` mode `0755`, and
+  the service wrote into its own state directory on first start. The two
+  paths differ in the SELinux user field (`system_u` versus `unconfined_u`)
+  because the mountpoint was relabeled by `restorecon` while the
+  subdirectory inherited the creating process; the type is what the
+  targeted policy enforces, and it matches.
+- The `ollama` account is created by the package's sysusers.d entry as uid
+  968 with home `/var/lib/ollama` and shell `/sbin/nologin`, and the role
+  resolved `User`/`Group` from the unit rather than assuming it.
+- Fedora's ollama build reports its version as `0.0.0`, both on
+  `/api/version` and in its startup log. This is a packaging artifact, not
+  a broken install; the smoke test asserts only that a `version` field is
+  returned, so it passes regardless.
