@@ -66,11 +66,14 @@ README.md under "Tool update policy".
   host is unknown; the second-run `changed=0` result is confirmed below.
 - `playbooks/ai_local.yml` has never been run with `--check`, on a host
   either before or after the real run.
-- No model has been pulled and no inference has been executed, so ROCm
-  *inference* on this GPU remains unproven. What is confirmed below is that
-  Ollama enumerates the card through its ROCm backend at startup; that is
-  device discovery, not a completed GPU computation. These stay separate
-  claims.
+- Inference has been confirmed only for one small model, `qwen3:0.6b` at
+  Q4_K_M, which fits entirely in VRAM. Whether a model large enough to
+  exceed the 15.9 GiB card still behaves correctly, and how it splits
+  between GPU and CPU when it does not fit, has not been exercised.
+- Ollama reported `entering low vram mode` at startup because the card's
+  15.9 GiB is under its 20.0 GiB threshold. What that mode changes in
+  practice, and whether it costs anything on this hardware, has not been
+  investigated.
 - Whether the `/srv/ai/models` mount comes back from `/etc/fstab` after a
   reboot has not been observed. Every other subvolume in this layout has
   survived a reboot, but `ai-models` was added later and has not.
@@ -296,3 +299,30 @@ README.md under "Tool update policy".
   `/api/version` and in its startup log. This is a packaging artifact, not
   a broken install; the smoke test asserts only that a `version` field is
   returned, so it passes regardless.
+- ROCm inference actually runs on the GPU; this is no longer discovery
+  alone. `qwen3:0.6b` (522 MB, pulled from ollama.com into
+  `/srv/ai/models/ollama`) loads with the journal reporting
+  `ggml_cuda_init: found 1 ROCm devices: Device 0: AMD Radeon RX 9070 XT,
+  gfx1201 (0x1201), Wave Size: 32` and
+  `load_backend: loaded ROCm backend from /usr/lib/ollama/libggml-hip.so`,
+  followed by `offloaded 29/29 layers to GPU` with model weights
+  (409.3 MiB), KV cache (448.0 MiB) and compute graph (45.7 MiB) all placed
+  on device `ROCm0`. `ollama ps` reports `100% GPU`, and VRAM in use rose
+  from 2.29 GB to 3.80 GB while the model was resident.
+- Throughput matches GPU execution rather than CPU fallback: 157.9
+  generated tokens/s and 1887.5 prompt tokens/s over a 109-token
+  generation. An earlier two-token request produced a meaningless 307
+  tokens/s and is not used as evidence.
+- Despite `offloaded 29/29 layers to GPU`, 83.5 MiB of weights and 2.0 MiB
+  of compute graph stay on the CPU. This is ordinary llama.cpp behaviour
+  for the token embedding table, not a partial-offload failure, and
+  `ollama ps` still reports `100% GPU`.
+- The model store stays on the independent subvolume under load. The
+  522,640,096-byte blob sits at
+  `/srv/ai/models/ollama/blobs/sha256-7f4030143c1c...`, owned
+  `ollama:ollama`, and `findmnt` on the blob itself resolves to
+  `FSROOT=/ai-models`. `/var/lib/ollama` did not grow, so nothing leaked
+  into the root subvolume.
+- `ollama pull` works as an unprivileged user against the system service:
+  the CLI only issues the API request, and the service downloads and writes
+  the blobs as its own account. No privilege escalation was needed.
