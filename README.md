@@ -516,7 +516,10 @@ systemd drop-in declares `RequiresMountsFor` against it. The service must
 not fall back to running against a plain root-subvolume directory, so the
 drop-in also declares `ConditionPathIsMountPoint`; if `/srv/ai/models` is
 ever not a mount point, systemd skips starting the unit rather than
-starting it against the wrong path.
+starting it against the wrong path. That behaviour is what
+`systemd.unit(5)` specifies for a failing condition; it has not been
+observed on this host, because the test would mean unmounting a store
+that holds real models.
 
 Fedora 44 is the currently validated Ollama package layout. The playbook
 sets `fedora_strict_release_check=true`, so `fedora_preflight`'s own

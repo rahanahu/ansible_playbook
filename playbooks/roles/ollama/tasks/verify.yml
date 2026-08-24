@@ -174,15 +174,22 @@
 - name: Confirm no directive in the drop-in was silently ignored by systemd
   ansible.builtin.assert:
     that:
+      - (ollama_unit_verify.rc | default(1)) == 0
       - "'Unknown key' not in (ollama_unit_verify.stdout | default(''))"
       - "'Unknown key' not in (ollama_unit_verify.stderr | default(''))"
     fail_msg: >-
-      `systemd-analyze verify {{ ollama_service }}` reported an "Unknown
-      key" warning. systemd silently ignores unrecognized keys in a
-      [Unit]/[Service] section rather than failing, so a typo in the
-      drop-in (for example ConditionPathIsMountPoin=) would otherwise
-      pass every other check in this file while providing no actual
-      protection. stdout: {{ ollama_unit_verify.stdout | default('') }}
+      `systemd-analyze verify {{ ollama_service }}` either exited non-zero
+      or reported an "Unknown key" warning. The exit code is checked
+      because the task runs with failed_when: false, so that this assert
+      can report the command's own output; without it a future fatal error
+      that does not happen to contain the string "Unknown key" would be
+      treated as success. The warning is checked because systemd silently
+      ignores unrecognized keys in a [Unit]/[Service] section rather than
+      failing, so a typo in the drop-in (for example
+      ConditionPathIsMountPoin=) would otherwise pass every other check in
+      this file while providing no actual protection.
+      rc: {{ ollama_unit_verify.rc | default('n/a') }}
+      stdout: {{ ollama_unit_verify.stdout | default('') }}
       stderr: {{ ollama_unit_verify.stderr | default('') }}
   when:
     - not ansible_check_mode

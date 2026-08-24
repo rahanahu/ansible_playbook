@@ -61,9 +61,12 @@ README.md under "Tool update policy".
   - The rejecting side of the `playbooks/fonts.yml` OS assert. It has been
     satisfied on Fedora and on Ubuntu 24.04, but never triggered against an
     unsupported distribution or an older Ubuntu.
-- The first run of `playbooks/ai_local.yml` was not captured. Only a later
-  run's recap was recorded, so which tasks reported `changed` on a fresh
-  host is unknown; the second-run `changed=0` result is confirmed below.
+- The very first run of `playbooks/ai_local.yml`, on a host where the
+  `ollama` package was not yet installed and the subvolume did not yet
+  exist, was not captured. Only a later run's recap was recorded, so which
+  tasks reported `changed` on a genuinely fresh host is unknown. Every
+  later run, including the first one after the systemd hardening, is
+  recorded below.
 - `--check` has only been exercised on an already-converged host. On a
   fresh host, where the package is not installed and the subvolume does not
   exist, most of the Ollama role skips itself by design; that path has been
@@ -311,8 +314,9 @@ README.md under "Tool update policy".
   which is not a CPU fallback. `HSA_OVERRIDE_GFX_VERSION` is empty in the
   server's own environment dump, so the card is driven at its native gfx
   target with no override, as predicted from Fedora's rocblas carrying
-  gfx1201 libraries. This confirms discovery only; see the corresponding
-  Open item about inference.
+  gfx1201 libraries. When first recorded this confirmed device discovery
+  only; GPU inference was confirmed separately afterwards, and is recorded
+  below.
 - SELinux did not block the service. `/srv/ai/models` is `var_t` and
   `/srv/ai/models/ollama` is `var_t` owned `ollama:ollama` mode `0755`, and
   the service wrote into its own state directory on first start. The two
