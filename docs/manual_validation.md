@@ -64,8 +64,10 @@ README.md under "Tool update policy".
 - The first run of `playbooks/ai_local.yml` was not captured. Only a later
   run's recap was recorded, so which tasks reported `changed` on a fresh
   host is unknown; the second-run `changed=0` result is confirmed below.
-- `playbooks/ai_local.yml` has never been run with `--check`, on a host
-  either before or after the real run.
+- `--check` has only been exercised on an already-converged host. On a
+  fresh host, where the package is not installed and the subvolume does not
+  exist, most of the Ollama role skips itself by design; that path has been
+  reasoned about but never run.
 - Inference has been confirmed only for one small model, `qwen3:0.6b` at
   Q4_K_M, which fits entirely in VRAM. Whether a model large enough to
   exceed the 15.9 GiB card still behaves correctly, and how it splits
@@ -74,9 +76,6 @@ README.md under "Tool update policy".
   15.9 GiB is under its 20.0 GiB threshold. What that mode changes in
   practice, and whether it costs anything on this hardware, has not been
   investigated.
-- Whether the `/srv/ai/models` mount comes back from `/etc/fstab` after a
-  reboot has not been observed. Every other subvolume in this layout has
-  survived a reboot, but `ai-models` was added later and has not.
 - An earlier version of this document claimed that, because the packaged
   `ollama.service` uses `Restart=always`, an absent `ai-models` mount would
   cause the service to silently write models into `/srv/ai/models/ollama`
@@ -394,3 +393,37 @@ README.md under "Tool update policy".
   'ConditionPathIsMountPoin' in section [Unit], ignoring.` — a typo would
   otherwise silently remove the protection while every other check stayed
   green.
+- The `ai-models` mount and the Ollama service both survive a reboot, and
+  the ordering between them holds in practice. After a real reboot
+  `/srv/ai/models` is mounted again from `/etc/fstab` with `subvol=/ai-models`
+  and `subvolid=270`, `srv-ai-models.mount` reports
+  `SourcePath=/etc/fstab` and `ActiveState=active`, and `ollama.service` is
+  `active (running)`.
+- The mount genuinely comes up first. On that boot
+  `srv-ai-models.mount` reached active at 02:41:16 and `ollama.service`'s
+  `ExecMainStartTimestamp` was 02:41:22, six seconds later. Note that
+  `systemd-analyze critical-chain ollama.service` does not show this: it
+  follows the slowest path, which runs through
+  `network-online.target` at 7.390s, so the mount never appears on it. The
+  timestamps are the evidence, not the critical chain.
+- The drop-in survives a reboot intact. `systemctl cat ollama.service`
+  still shows the `[Unit]` section with both `RequiresMountsFor` and
+  `ConditionPathIsMountPoint`, `systemctl show` still reports
+  `RequiresMountsFor=/srv/ai/models` with `srv-ai-models.mount` in both
+  `Requires=` and `After=`, `ConditionResult=yes`, and `systemd-analyze
+  verify ollama.service` still exits 0 with no output.
+- ROCm inference still works after a reboot, with no reconfiguration. The
+  journal for the current boot again records `library=ROCm compute=gfx1201
+  name=ROCm0 description="AMD Radeon RX 9070 XT"` at service start, then
+  `load_backend: loaded ROCm backend from /usr/lib/ollama/libggml-hip.so`
+  and `offloaded 29/29 layers to GPU` with weights, KV cache and compute
+  graph on `ROCm0` when the model loaded. `ollama ps` reports `100% GPU`.
+  Throughput was not re-measured: the smoke test generated two tokens,
+  which is too few to mean anything, so the 157.9 tokens/s figure recorded
+  earlier remains the only throughput measurement.
+- No model data leaked into the root subvolume across the reboot. The
+  522 MB blob is still at
+  `/srv/ai/models/ollama/blobs/sha256-7f4030143c1c...` and `findmnt` on it
+  resolves to `FSROOT=/ai-models`; the model store holds 499 MB, while
+  `/var/lib/ollama` holds 8.0 KB, which is the identity keypair and no
+  blobs.
