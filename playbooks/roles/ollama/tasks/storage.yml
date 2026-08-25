@@ -7,4 +7,3 @@
     group: "{{ ollama_service_group }}"
     mode: "{{ ollama_models_mode }}"
   become: true
-  when: ollama_unit_present | bool

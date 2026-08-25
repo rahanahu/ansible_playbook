@@ -1,6 +1,20 @@
 ---
-- name: Install the Fedora Ollama packages
+# Remove the Fedora ollama RPM before installing the upstream binary. Its
+# preun scriptlet runs `remove-system-units ollama.service`, which stops and
+# disables ollama.service (it does not remove /var/lib/ollama: verified via
+# `rpm -q --scripts ollama`, and the directory is non-empty at removal time
+# anyway, so rpm -e leaves it in place). Removing the package does take
+# /usr/lib/sysusers.d/ollama.conf with it, though, so nothing on the host
+# guarantees the ollama account/group exist afterward. That is why
+# account.yml runs after this task, not before it.
+- name: Remove the Fedora ollama package
   ansible.builtin.dnf:
-    name: "{{ ollama_packages }}"
+    name: "{{ ollama_conflicting_packages }}"
+    state: absent
+  become: true
+
+- name: Install the upstream Ollama archive prerequisites
+  ansible.builtin.dnf:
+    name: "{{ ollama_archive_packages }}"
     state: present
   become: true

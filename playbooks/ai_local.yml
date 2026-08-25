@@ -4,9 +4,9 @@
   connection: local
   gather_facts: true
 
-  # The Ollama package contract (a single ROCm-linked `ollama` package) is
-  # validated on Fedora 44 only; require a validated release rather than
-  # continuing on the generic Fedora baseline.
+  # The overall Fedora workstation / Btrfs provisioning baseline is
+  # validated on Fedora 44. Ollama itself is installed from the upstream
+  # release and no longer depends on Fedora's ollama RPM topology.
   vars:
     fedora_strict_release_check: true
 

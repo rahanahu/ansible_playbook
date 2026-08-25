@@ -67,10 +67,14 @@ README.md under "Tool update policy".
   tasks reported `changed` on a genuinely fresh host is unknown. Every
   later run, including the first one after the systemd hardening, is
   recorded below.
-- `--check` has only been exercised on an already-converged host. On a
-  fresh host, where the package is not installed and the subvolume does not
-  exist, most of the Ollama role skips itself by design; that path has been
-  reasoned about but never run.
+- `--check` has only been exercised on an already-converged host, and only
+  against the pre-migration (Fedora RPM based) version of the `ollama` role,
+  whose task structure no longer exists: it gated most of the role on a
+  packaged-unit presence fact (`ollama_unit_present`) that has since been
+  removed. The claim that "most of the role skips itself by design" on a
+  fresh host describes that old structure, not the current upstream-binary
+  based role; it has not been re-measured. See the upstream-migration
+  bullet below for what is unverified about `--check` on the current role.
 - Inference has been confirmed only for one small model, `qwen3:0.6b` at
   Q4_K_M, which fits entirely in VRAM. Whether a model large enough to
   exceed the 15.9 GiB card still behaves correctly, and how it splits
@@ -108,11 +112,24 @@ README.md under "Tool update policy".
   on this host, because `/var/log` is not a separate mount here. It has not
   been verified by actually removing the `/srv/ai/models` fstab entry, and
   that is the case `ConditionPathIsMountPoint` exists to cover.
-- Future Fedora release package topology for Ollama is unknown. The role
-  now refuses unvalidated releases (`ollama_validated_fedora_releases`,
-  currently `[44]`), but whether Fedora 45+ keeps the single
-  ROCm-linked `ollama` package Fedora 44 ships, or splits it the way some
-  other distributions do, has not been investigated.
+- The `ollama` role was migrated from the Fedora RPM to the upstream
+  release binary (installed under `/usr/local`), and none of the following
+  has been exercised on real hardware yet:
+  - The migration run itself: removing the Fedora `ollama` package,
+    downloading the ~2.5 GB combined base+ROCm archives to
+    `ollama_download_dir`, extracting them under `/usr/local`, and
+    restarting the service, starting from a host that still has the old
+    RPM-based install.
+  - That a second run against an already-migrated, up-to-date host reports
+    `changed=0` (no redundant re-download/re-extraction).
+  - Recovery when the ROCm archive extraction is interrupted partway
+    through (for example a crash between the base and ROCm `unarchive`
+    tasks): whether the `find`-based ROCm-directory re-check in
+    `tasks/install.yml`/`tasks/verify.yml` actually triggers a re-run that
+    restores the missing ROCm library directory.
+  - `--check` behaviour of the current, post-migration role structure on
+    both a fresh host (no prior Ollama install at all) and a host mid-way
+    through an interrupted install.
 - The service account's home, `/var/lib/ollama`, holds the identity keypair
   Ollama generates on first start and is inside the root subvolume, so it
   is captured by root Snapper snapshots. Only the model store is excluded.

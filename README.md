@@ -521,44 +521,46 @@ starting it against the wrong path. That behaviour is what
 observed on this host, because the test would mean unmounting a store
 that holds real models.
 
-Fedora 44 is the currently validated Ollama package layout. The playbook
-sets `fedora_strict_release_check=true`, so `fedora_preflight`'s own
-strict-release assert rejects an unvalidated Fedora release during
-`pre_tasks`, before the `ollama` role's separate
-`ollama_validated_fedora_releases` guard (currently `[44]`) ever runs.
-`-e ollama_allow_unvalidated_release=true` on its own therefore does
-nothing; continuing on an unvalidated release at your own risk requires
-both flags together:
+`fedora_strict_release_check=true` is set for the overall Fedora
+workstation/Btrfs provisioning baseline, which is validated on Fedora 44;
+`fedora_preflight`'s strict-release assert still rejects an unvalidated
+Fedora release during `pre_tasks`. Ollama itself no longer depends on that
+guard, or on any Fedora package topology: it is installed from the
+upstream release binary (see below), so there is no
+`ollama_allow_unvalidated_release`-style escape hatch to combine with
+`-e fedora_strict_release_check=false` any more.
 
-```bash
-ansible-playbook playbooks/ai_local.yml -i localhost, -c local -K \
-  -e fedora_strict_release_check=false \
-  -e ollama_allow_unvalidated_release=true
-```
+Ollama backend: upstream release binary, not a Fedora package. The role
+installs `ollama-linux-amd64.tar.zst` and, unless
+`-e ollama_install_rocm=false`, `ollama-linux-amd64-rocm.tar.zst` from the
+project's own GitHub releases, extracted under `/usr/local` as
+`/usr/local/bin/ollama` and `/usr/local/lib/ollama`. It follows the latest
+upstream release by default; set `ollama_version` (without a leading `v`)
+to pin one. Each archive's checksum is verified at install time against
+that same release's `sha256sum.txt`, fetched over the network — this
+detects transfer corruption, not upstream tampering, since both the
+archive and its checksum manifest come from the same GitHub release.
 
-Selected Ollama backend: Fedora-native ROCm. Fedora 44 ships a single
-`ollama` package (0.12.11-4.fc44) that hard-requires hipblas and rocblas;
-`ollama-base`, `ollama-rocm` and `ollama-vulkan` do not exist in Fedora, so
-no CPU-only or Vulkan package variant can be selected. That is the reason
-this role has no backend variable.
+The Fedora `ollama` RPM, if present, is explicitly removed first (`dnf
+remove ollama`), so it never conflicts with the files this role puts under
+`/usr/local`. Removing it does **not** use `dnf autoremove`-style dependency
+cleanup: Ansible's dnf/dnf5 modules default `clean_requirements_on_remove`
+to their `autoremove` parameter, which this role does not set, so it stays
+`false`. That means the Fedora-native ROCm userspace previously pulled in
+as dependencies of the `ollama` RPM (`rocm-hip`, `rocblas`, `hipblas`, and
+the rest) is left installed as orphaned packages after migrating a host
+from an older run of this role. The role does not run `dnf autoremove`
+itself, because that would also sweep up unrelated orphaned packages
+system-wide. If you want to reclaim that space, review the output of `dnf
+autoremove` yourself before applying it.
 
-Fedora package set pulled in: `ollama` plus 21 further Fedora-native ROCm
-userspace packages (`rocm-hip`, `rocblas`, `rocsolver`, `hipblas`, `hipcc`,
-`rocm-runtime`, `rocm-comgr`, `rocm-device-libs`, and the `rocm-clang`/
-`rocm-llvm`/`rocm-libc++` sets). Roughly 2 GiB downloaded, about 5 GiB
-installed.
-
-ROCm/Vulkan strategy: the AMD official repository, `amdgpu-install`,
-AMDGPU-PRO-style stacks, DKMS `amdgpu`, and `HSA_OVERRIDE_GFX_VERSION` are
-not used. Only Fedora native packages are installed. The measured
-`dnf install --assumeno ollama` transaction on Fedora 44 installs 22
-packages and removes or replaces none, leaving Fedora Mesa/RADV,
-`vulkan-loader`, `libdrm`, and the kernel `amdgpu` driver in place; the
-desktop and game graphics stack stays Fedora Mesa/RADV.
-
-The ROCm userspace itself installs under `/usr` and therefore IS inside
-root Snapper snapshots; only the models under `/srv/ai/models` are
-excluded.
+Because the release archives are extracted under `/usr/local`, which lives
+on the root Btrfs subvolume, each version update (a few GB) is captured by
+root Snapper snapshots. That is accepted deliberately, the same way it was
+before this role tracked upstream directly: only the models under
+`/srv/ai/models`, on their own dedicated subvolume, are excluded from root
+snapshots, and that is the tradeoff that actually matters for snapshot
+size.
 
 Ansible does not download models. `ollama pull` is left to the user.
 
@@ -677,6 +679,7 @@ instead of failing.
 Follows the latest stable release:
 
 - `fzf` (`fzf_version` pins it)
+- Ollama (`ollama_version` pins it) — installed from the upstream release archive, not a remote install script; each archive's checksum is fetched from that same release's `sha256sum.txt` at install time
 - Sheldon (`sheldon_version` pins it) — the installer script itself stays pinned by `sheldon_installer_commit` and verified by `sheldon_installer_checksum`; only the release tag it fetches moves, so integrity verification is unaffected
 - `uv`, via the upstream `astral.sh/uv/install.sh` installer
 - Node.js, via nvm at the latest LTS

@@ -1,0 +1,261 @@
+---
+# --- Determine the currently installed version --------------------------
+
+- name: Check whether the Ollama binary is already installed
+  ansible.builtin.stat:
+    path: "{{ ollama_install_bin }}"
+  register: ollama_install_bin_stat
+  check_mode: false
+
+- name: Read the installed Ollama version
+  ansible.builtin.command:
+    argv:
+      - "{{ ollama_install_bin }}"
+      - --version
+  register: ollama_installed_version_raw
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  when: ollama_install_bin_stat.stat.exists
+
+# `ollama --version` has two observed output shapes, depending on whether
+# it could reach a running daemon:
+#   - connected:     "ollama version is X"
+#   - not connected: "Warning: could not connect to a running Ollama
+#                      instance\nWarning: client version is X" (rc=0)
+# and when the client and a reachable server report different versions,
+# both a "client version is X" line and an "ollama version is Y" line can
+# appear together. Only the client line reflects the actual installed
+# binary, so it is preferred whenever present; the "ollama version is"
+# line is the fallback for the single-line connected/equal-version case.
+- name: Record the installed Ollama version from each possible output shape
+  ansible.builtin.set_fact:
+    ollama_installed_version_client: >-
+      {{ (ollama_installed_version_raw.stdout | default(''))
+         | regex_search('[Cc]lient version is (\S+)', '\1')
+         | default([''], true) | first }}
+    ollama_installed_version_connected: >-
+      {{ (ollama_installed_version_raw.stdout | default(''))
+         | regex_search('ollama version is (\S+)', '\1')
+         | default([''], true) | first }}
+  changed_when: false
+  when: ollama_install_bin_stat.stat.exists
+
+- name: Resolve the installed Ollama version
+  ansible.builtin.set_fact:
+    ollama_installed_version: >-
+      {{ ollama_installed_version_client
+         if (ollama_installed_version_client | length > 0)
+         else ollama_installed_version_connected }}
+  changed_when: false
+  when: ollama_install_bin_stat.stat.exists
+
+# --- Resolve the desired version -----------------------------------------
+
+- name: Look up the latest upstream Ollama release
+  ansible.builtin.uri:
+    url: "{{ ollama_release_api_url }}"
+    return_content: true
+  register: ollama_release_lookup
+  changed_when: false
+  check_mode: false
+  failed_when: false
+  when: ollama_version is not defined
+
+- name: Resolve the desired Ollama version
+  ansible.builtin.set_fact:
+    ollama_desired_version: >-
+      {{ ollama_version if (ollama_version is defined) else
+         ((ollama_release_lookup.json.tag_name | regex_replace('^v', ''))
+          if ((ollama_release_lookup.status | default(0)) == 200)
+          else ollama_installed_version) }}
+  changed_when: false
+
+- name: Warn that the release lookup failed and the installed version is being kept
+  ansible.builtin.debug:
+    msg: >-
+      Could not resolve the latest upstream Ollama release from
+      {{ ollama_release_api_url }} (HTTP {{ ollama_release_lookup.status | default('n/a') }}).
+      Keeping the currently installed version ({{ ollama_installed_version }})
+      instead of upgrading. Set ollama_version explicitly to pin a version
+      and avoid this lookup, for example if the GitHub API rate limit
+      (60 requests/hour unauthenticated) has been exhausted.
+  when:
+    - ollama_version is not defined
+    - (ollama_release_lookup.status | default(0)) != 200
+    - ollama_installed_version | length > 0
+
+- name: Require a resolved Ollama version
+  ansible.builtin.assert:
+    that:
+      - ollama_desired_version | length > 0
+      - ollama_desired_version != '0.0.0'
+    fail_msg: >-
+      Could not resolve a version of Ollama to install: the release lookup
+      at {{ ollama_release_api_url }} failed and no existing Ollama
+      installation was found to fall back to. Set ollama_version explicitly,
+      or retry once network access to the GitHub API is available.
+
+# --- Detect a missing ROCm library directory -----------------------------
+
+# Upstream names the ROCm subdirectory with an embedded version, e.g.
+# rocm_v7_2, not a fixed "rocm", so the directory name is matched with a
+# glob rather than hard-coded. find does not fail when ollama_install_lib_dir
+# does not exist yet (e.g. on a fresh host); it just reports 0 matches.
+- name: Check for an already-installed ROCm library directory
+  ansible.builtin.find:
+    paths: "{{ ollama_install_lib_dir }}"
+    patterns: "rocm*"
+    file_type: directory
+  register: ollama_install_rocm_dirs
+  check_mode: false
+  when: ollama_install_rocm | bool
+
+# --- Install or upgrade ---------------------------------------------------
+
+# Reinstalling purely because the ROCm directory is missing (desired ==
+# installed already) also re-extracts the base archive: the block below has
+# no cheaper "ROCm-only" path, but that only costs one redundant base
+# download/extract, not a correctness problem, and keeps this task list
+# from having a second block with its own stop/extract/cleanup logic to
+# keep in sync with the first.
+- name: Install or upgrade the upstream Ollama release
+  become: true
+  when:
+    - not ansible_check_mode
+    - >-
+      (ollama_desired_version != ollama_installed_version) or
+      ((ollama_install_rocm | bool) and
+      (ollama_install_rocm_dirs.matched | default(0) | int) == 0)
+  block:
+    # /tmp on this host is a 15.4 GB tmpfs; downloading the ~2.5 GB combined
+    # archives there would consume that much RAM. Use a real-disk cache
+    # directory instead.
+    - name: Create the Ollama download directory
+      ansible.builtin.file:
+        path: "{{ ollama_download_dir }}"
+        state: directory
+        owner: root
+        mode: "0700"
+
+    - name: Download the release checksum manifest
+      ansible.builtin.uri:
+        url: "{{ ollama_release_download_base }}/v{{ ollama_desired_version }}/sha256sum.txt"
+        return_content: true
+      register: ollama_checksum_manifest
+      changed_when: false
+
+    # The base archive filename (ollama-linux-amd64.tar.zst) is a strict
+    # prefix of the ROCm archive filename (ollama-linux-amd64-rocm.tar.zst),
+    # so both patterns anchor immediately on the literal ".tar.zst" suffix
+    # to avoid the base pattern also matching the ROCm line.
+    - name: Extract the release archive checksums
+      ansible.builtin.set_fact:
+        ollama_base_archive_checksum: >-
+          {{ ollama_checksum_manifest.content
+             | regex_search('([0-9a-f]{64})\s+\./ollama-linux-amd64\.tar\.zst', '\1')
+             | default([''], true) | first }}
+        ollama_rocm_archive_checksum: >-
+          {{ ollama_checksum_manifest.content
+             | regex_search('([0-9a-f]{64})\s+\./ollama-linux-amd64-rocm\.tar\.zst', '\1')
+             | default([''], true) | first }}
+      changed_when: false
+
+    - name: Require the base archive checksum to have been resolved
+      ansible.builtin.assert:
+        that:
+          - ollama_base_archive_checksum | length == 64
+          - not (ollama_install_rocm | bool) or (ollama_rocm_archive_checksum | length == 64)
+        fail_msg: >-
+          Could not find the expected archive checksum(s) in
+          {{ ollama_release_download_base }}/v{{ ollama_desired_version }}/sha256sum.txt.
+
+    - name: Download the base Ollama release archive
+      ansible.builtin.get_url:
+        url: "{{ ollama_release_download_base }}/v{{ ollama_desired_version }}/ollama-linux-amd64.tar.zst"
+        dest: "{{ ollama_download_dir }}/ollama-linux-amd64.tar.zst"
+        checksum: "sha256:{{ ollama_base_archive_checksum }}"
+        owner: root
+        mode: "0600"
+
+    - name: Download the ROCm Ollama release archive
+      ansible.builtin.get_url:
+        url: "{{ ollama_release_download_base }}/v{{ ollama_desired_version }}/ollama-linux-amd64-rocm.tar.zst"
+        dest: "{{ ollama_download_dir }}/ollama-linux-amd64-rocm.tar.zst"
+        checksum: "sha256:{{ ollama_rocm_archive_checksum }}"
+        owner: root
+        mode: "0600"
+      when: ollama_install_rocm | bool
+
+    - name: Check whether the Ollama systemd unit already exists
+      ansible.builtin.stat:
+        path: "{{ ollama_unit_path }}"
+      register: ollama_unit_stat_before_install
+
+    - name: Stop Ollama before replacing the installed binary
+      ansible.builtin.systemd_service:
+        name: "{{ ollama_service }}"
+        state: stopped
+      when: ollama_unit_stat_before_install.stat.exists
+
+    # Matches upstream's own documented manual-upgrade steps: the lib
+    # directory is removed rather than merged over, so files dropped by an
+    # older version cannot linger alongside the new version's files.
+    - name: Remove the existing Ollama library directory before extracting
+      ansible.builtin.file:
+        path: "{{ ollama_install_lib_dir }}"
+        state: absent
+
+    - name: Extract the base Ollama release archive
+      ansible.builtin.unarchive:
+        src: "{{ ollama_download_dir }}/ollama-linux-amd64.tar.zst"
+        dest: "{{ ollama_install_root }}"
+        remote_src: true
+      notify:
+        - Reload systemd for the Ollama units
+        - Restart Ollama
+
+    - name: Extract the ROCm Ollama release archive
+      ansible.builtin.unarchive:
+        src: "{{ ollama_download_dir }}/ollama-linux-amd64-rocm.tar.zst"
+        dest: "{{ ollama_install_root }}"
+        remote_src: true
+      when: ollama_install_rocm | bool
+      notify:
+        - Reload systemd for the Ollama units
+        - Restart Ollama
+  # always (not a trailing block task) so the up to ~2.5 GB combined
+  # archives are removed from ollama_download_dir even when a task above
+  # fails (for example a checksum mismatch or a network drop mid-download).
+  # This task itself is not allowed to swallow that failure: it carries no
+  # ignore_errors/failed_when, so if block failed, Ansible still reports
+  # that failure (and aborts the play) once always finishes running.
+  always:
+    - name: Remove the Ollama download directory
+      ansible.builtin.file:
+        path: "{{ ollama_download_dir }}"
+        state: absent
+
+- name: Explain why the Ollama install/upgrade is skipped in check mode
+  ansible.builtin.debug:
+    msg: >-
+      Skipping the Ollama download and extraction in check mode because
+      check mode cannot fetch or unpack the release archives.
+      desired={{ ollama_desired_version }} installed={{ ollama_installed_version | default('') }}
+  when: ansible_check_mode
+
+- name: Confirm the Ollama binary was installed
+  ansible.builtin.stat:
+    path: "{{ ollama_install_bin }}"
+  register: ollama_install_bin_stat_after
+  check_mode: false
+  when: not ansible_check_mode
+
+- name: Require the Ollama binary to exist after installation
+  ansible.builtin.assert:
+    that:
+      - ollama_install_bin_stat_after.stat.exists
+    fail_msg: >-
+      {{ ollama_install_bin }} does not exist after the Ollama install task
+      ran.
+  when: not ansible_check_mode

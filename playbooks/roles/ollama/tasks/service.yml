@@ -8,4 +8,4 @@
   become: true
   when:
     - ollama_manage_service | bool
-    - ollama_unit_present | bool
+    - (not ansible_check_mode) or (ollama_unit_path_stat.stat.exists | default(false))

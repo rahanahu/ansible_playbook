@@ -3,13 +3,21 @@
   ansible.builtin.import_tasks:
     file: preflight.yml
 
-- name: Install the Fedora Ollama packages
+- name: Remove the Fedora Ollama package and install archive prerequisites
   ansible.builtin.import_tasks:
     file: packages.yml
 
-- name: Resolve the packaged Ollama service account
+- name: Ensure the Ollama service account exists
   ansible.builtin.import_tasks:
     file: account.yml
+
+- name: Install or upgrade the upstream Ollama release binary
+  ansible.builtin.import_tasks:
+    file: install.yml
+
+- name: Write the base Ollama systemd unit
+  ansible.builtin.import_tasks:
+    file: unit.yml
 
 - name: Create the Ollama model storage directory
   ansible.builtin.import_tasks:

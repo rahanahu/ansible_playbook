@@ -1,23 +1,54 @@
 ---
-ollama_packages:
-  - ollama
+# ollama_version is intentionally undefined by default: the role tracks the
+# latest upstream release. Define it (without a leading "v") to pin.
+#
+# The checksum used to validate each downloaded archive is sha256sum.txt
+# fetched at run time from that same GitHub release, not a value pinned in
+# this repository. That only detects transfer corruption between GitHub and
+# this host; it does not detect upstream tampering with the release itself.
+# That is an accepted consequence of tracking latest rather than a fixed,
+# separately-vetted checksum: trusting upstream at run time is the price of
+# following latest.
+ollama_release_api_url: https://api.github.com/repos/ollama/ollama/releases/latest
+ollama_release_download_base: https://github.com/ollama/ollama/releases/download
+ollama_install_rocm: true
+
+# Base (1.4 GB) and ROCm (1.0 GB) archives are extracted under
+# ollama_install_root. bin/ and lib/ must stay siblings under the same
+# install root, because the ollama binary locates its libraries via the
+# relative path ../lib/ollama from its own executable path. Because
+# /usr/local sits on the root Btrfs subvolume, every version update rewrites
+# several GB there and each rewrite is captured by Snapper's root
+# snapshots. This is accepted deliberately: the multi-GB model weights
+# themselves stay off the root subvolume, on the dedicated ollama_models_dir
+# subvolume mounted at ollama_models_root, which is the tradeoff that
+# actually matters for snapshot size.
+ollama_install_root: /usr/local
+ollama_install_bin: "{{ ollama_install_root }}/bin/ollama"
+ollama_install_lib_dir: "{{ ollama_install_root }}/lib/ollama"
+ollama_download_dir: /var/cache/ansible/ollama
 
 ollama_service: ollama.service
 
-# The Ollama package contract this role depends on was measured on Fedora 44
-# only: a single `ollama` package that hard-requires hipblas and rocblas,
-# with no ollama-base / ollama-rocm / ollama-vulkan split to choose from.
-# A later Fedora release may ship a different package topology, so the role
-# refuses unvalidated releases instead of assuming the layout carries over.
-#
-# playbooks/ai_local.yml separately sets fedora_strict_release_check=true,
-# so fedora_preflight's own strict-release assert currently rejects an
-# unvalidated Fedora release first, before this role's own guard ever runs.
-# The guard below is kept anyway so the role stays self-contained and still
-# fails closed for anyone who imports it directly without that entrypoint.
-ollama_validated_fedora_releases:
-  - 44
-ollama_allow_unvalidated_release: false
+ollama_conflicting_packages:
+  - ollama
+ollama_archive_packages:
+  - zstd
+  - tar
+
+# /var/lib/ollama, not upstream's usual /usr/share/ollama: it matches this
+# host's existing ollama passwd entry (uid 968, home /var/lib/ollama), so
+# the user task below reports no changed on a host that already ran the old
+# Fedora-package-based role, and /var/lib is the FHS-correct place for
+# mutable service state. Removing the Fedora ollama RPM does not delete this
+# directory (its preun scriptlet only stops/disables the service); account.yml
+# runs after packages.yml because the RPM removal takes
+# /usr/lib/sysusers.d/ollama.conf with it, so nothing else on the host
+# guarantees the account/group still exist afterward.
+ollama_service_user: ollama
+ollama_service_group: ollama
+ollama_service_home: /var/lib/ollama
+ollama_unit_path: "/etc/systemd/system/{{ ollama_service }}"
 
 # Must match the `ai-models` subvolume mountpoint declared in the
 # fedora_btrfs_layout role's defaults. Overriding this alone will make the
@@ -46,8 +77,7 @@ ollama_smoke_test_delay: 4
 ollama_api_url: http://127.0.0.1:11434/api/version
 
 # Internal facts resolved at run time; do not set these directly.
-ollama_unit_present: false
-ollama_service_user: ""
-ollama_service_group: ""
+ollama_installed_version: ""
+ollama_desired_version: ""
 ollama_gpu_groups_present: []
 ollama_effective_supplementary_groups: []

@@ -3,9 +3,150 @@
   ansible.builtin.debug:
     msg: >-
       Skipping the Ollama smoke test in check mode because check mode
-      cannot install the package or run the service.
+      cannot install the binary or run the service.
   when:
     - ansible_check_mode
+    - ollama_run_smoke_test | bool
+
+- name: Gather installed package facts
+  ansible.builtin.package_facts:
+    manager: rpm
+  when:
+    - not ansible_check_mode
+    - ollama_run_smoke_test | bool
+
+- name: Confirm the Fedora ollama package is not installed
+  ansible.builtin.assert:
+    that:
+      - "'ollama' not in (ansible_facts.packages | default({}))"
+    fail_msg: >-
+      The Fedora `ollama` package is still present. This role installs
+      Ollama from the upstream release binary and expects the RPM to have
+      been removed by tasks/packages.yml.
+  when:
+    - not ansible_check_mode
+    - ollama_run_smoke_test | bool
+
+- name: Check the installed Ollama binary and library directory
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  register: ollama_verify_paths
+  loop:
+    - "{{ ollama_install_bin }}"
+    - "{{ ollama_install_lib_dir }}"
+  check_mode: false
+  when:
+    - not ansible_check_mode
+    - ollama_run_smoke_test | bool
+
+- name: Confirm the Ollama binary and library directory exist
+  ansible.builtin.assert:
+    that:
+      - >-
+        (ollama_verify_paths.results
+         | selectattr('item', 'equalto', ollama_install_bin) | first)
+        .stat.exists
+      - >-
+        (ollama_verify_paths.results
+         | selectattr('item', 'equalto', ollama_install_bin) | first)
+        .stat.executable
+      - >-
+        (ollama_verify_paths.results
+         | selectattr('item', 'equalto', ollama_install_lib_dir) | first)
+        .stat.isdir
+    fail_msg: >-
+      {{ ollama_install_bin }} is not an executable file, and/or
+      {{ ollama_install_lib_dir }} is not a directory.
+  when:
+    - not ansible_check_mode
+    - ollama_run_smoke_test | bool
+
+# Upstream names the ROCm subdirectory with an embedded version, e.g.
+# rocm_v7_2, not a fixed "rocm", so the directory name is matched with a
+# glob rather than hard-coded. This is an independent re-check of runtime
+# state, not a re-use of tasks/install.yml's own find result.
+- name: Check for an installed ROCm library directory
+  ansible.builtin.find:
+    paths: "{{ ollama_install_lib_dir }}"
+    patterns: "rocm*"
+    file_type: directory
+  register: ollama_verify_rocm_dirs
+  check_mode: false
+  when:
+    - not ansible_check_mode
+    - ollama_run_smoke_test | bool
+    - ollama_install_rocm | bool
+
+- name: Confirm a ROCm library directory is installed
+  ansible.builtin.assert:
+    that:
+      - (ollama_verify_rocm_dirs.matched | default(0) | int) > 0
+    fail_msg: >-
+      No rocm* directory was found under {{ ollama_install_lib_dir }}, even
+      though ollama_install_rocm is true. Without it, Ollama silently falls
+      back to CPU-only inference instead of failing loudly. Confirm the
+      actual GPU backend selection from `journalctl -u {{ ollama_service }}`
+      (the "inference compute" line reports `library=ROCm` when the GPU
+      backend was selected); this check only confirms the library directory
+      exists, not that inference is using the GPU.
+  when:
+    - not ansible_check_mode
+    - ollama_run_smoke_test | bool
+    - ollama_install_rocm | bool
+
+- name: Read the installed Ollama binary version
+  ansible.builtin.command:
+    argv:
+      - "{{ ollama_install_bin }}"
+      - --version
+  register: ollama_verify_version_raw
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  when:
+    - not ansible_check_mode
+    - ollama_run_smoke_test | bool
+
+# See tasks/install.yml for why both output shapes must be handled and why
+# the client line (the actual installed binary version) is preferred over
+# the "ollama version is" line when both are present.
+- name: Record the installed Ollama binary version from each possible output shape
+  ansible.builtin.set_fact:
+    ollama_verify_version_client: >-
+      {{ (ollama_verify_version_raw.stdout | default(''))
+         | regex_search('[Cc]lient version is (\S+)', '\1')
+         | default([''], true) | first }}
+    ollama_verify_version_connected: >-
+      {{ (ollama_verify_version_raw.stdout | default(''))
+         | regex_search('ollama version is (\S+)', '\1')
+         | default([''], true) | first }}
+  changed_when: false
+  when:
+    - not ansible_check_mode
+    - ollama_run_smoke_test | bool
+
+- name: Resolve the installed Ollama binary version
+  ansible.builtin.set_fact:
+    ollama_verify_version: >-
+      {{ ollama_verify_version_client
+         if (ollama_verify_version_client | length > 0)
+         else ollama_verify_version_connected }}
+  changed_when: false
+  when:
+    - not ansible_check_mode
+    - ollama_run_smoke_test | bool
+
+- name: Confirm the installed Ollama binary reports the desired version
+  ansible.builtin.assert:
+    that:
+      - ollama_verify_version == ollama_desired_version
+      - ollama_verify_version != '0.0.0'
+    fail_msg: >-
+      `{{ ollama_install_bin }} --version` reported
+      "{{ ollama_verify_version }}", which does not match the desired
+      version {{ ollama_desired_version }}.
+  when:
+    - not ansible_check_mode
     - ollama_run_smoke_test | bool
 
 - name: Read the effective Ollama environment
@@ -23,7 +164,6 @@
   when:
     - not ansible_check_mode
     - ollama_run_smoke_test | bool
-    - ollama_unit_present | bool
 
 - name: Record the effective Ollama supplementary groups
   ansible.builtin.set_fact:
@@ -35,7 +175,6 @@
   when:
     - not ansible_check_mode
     - ollama_run_smoke_test | bool
-    - ollama_unit_present | bool
 
 - name: Confirm the systemd drop-in is in effect
   ansible.builtin.assert:
@@ -55,7 +194,6 @@
   when:
     - not ansible_check_mode
     - ollama_run_smoke_test | bool
-    - ollama_unit_present | bool
 
 - name: Resolve the escaped systemd mount unit name for the model storage root
   ansible.builtin.command:
@@ -70,7 +208,6 @@
   when:
     - not ansible_check_mode
     - ollama_run_smoke_test | bool
-    - ollama_unit_present | bool
 
 - name: Read the effective Ollama mount dependency configuration
   ansible.builtin.command:
@@ -88,7 +225,6 @@
   when:
     - not ansible_check_mode
     - ollama_run_smoke_test | bool
-    - ollama_unit_present | bool
 
 - name: Record the escaped mount unit name for the model storage root
   ansible.builtin.set_fact:
@@ -97,7 +233,6 @@
   when:
     - not ansible_check_mode
     - ollama_run_smoke_test | bool
-    - ollama_unit_present | bool
 
 - name: Confirm the mount dependency reached the effective configuration
   ansible.builtin.assert:
@@ -119,7 +254,6 @@
   when:
     - not ansible_check_mode
     - ollama_run_smoke_test | bool
-    - ollama_unit_present | bool
 
 - name: Read the effective Ollama unit file, including drop-ins
   ansible.builtin.command:
@@ -134,7 +268,6 @@
   when:
     - not ansible_check_mode
     - ollama_run_smoke_test | bool
-    - ollama_unit_present | bool
 
 - name: Confirm ConditionPathIsMountPoint reached the effective unit file
   ansible.builtin.assert:
@@ -153,7 +286,21 @@
   when:
     - not ansible_check_mode
     - ollama_run_smoke_test | bool
-    - ollama_unit_present | bool
+
+- name: Confirm the base Ollama unit file reached the effective configuration
+  ansible.builtin.assert:
+    that:
+      - >-
+        ('# ' ~ ollama_unit_path) in
+        (ollama_effective_unit_file.stdout | default(''))
+    fail_msg: >-
+      `# {{ ollama_unit_path }}` was not found in `systemctl cat
+      {{ ollama_service }}`, meaning systemd is not sourcing the base unit
+      this role wrote.
+      Observed: {{ ollama_effective_unit_file.stdout | default('') }}
+  when:
+    - not ansible_check_mode
+    - ollama_run_smoke_test | bool
 
 - name: Verify the effective Ollama unit for silently ignored directives
   ansible.builtin.command:
@@ -169,7 +316,6 @@
   when:
     - not ansible_check_mode
     - ollama_run_smoke_test | bool
-    - ollama_unit_present | bool
 
 - name: Confirm no directive in the drop-in was silently ignored by systemd
   ansible.builtin.assert:
@@ -194,7 +340,6 @@
   when:
     - not ansible_check_mode
     - ollama_run_smoke_test | bool
-    - ollama_unit_present | bool
 
 - name: Query the Ollama API for its version
   ansible.builtin.uri:
@@ -209,20 +354,21 @@
   when:
     - not ansible_check_mode
     - ollama_run_smoke_test | bool
-    - ollama_unit_present | bool
     - ollama_manage_service | bool
 
-- name: Confirm the Ollama API reported a version
+- name: Confirm the Ollama API reported the desired version
   ansible.builtin.assert:
     that:
       - "'version' in (ollama_api_version.json | default({}))"
+      - (ollama_api_version.json | default({})).version | default('') == ollama_desired_version
     fail_msg: >-
       The Ollama API at {{ ollama_api_url }} did not return a `version`
-      field.
+      field, or it did not match the desired version
+      {{ ollama_desired_version }}. Observed:
+      {{ (ollama_api_version.json | default({})).version | default('none') }}
   when:
     - not ansible_check_mode
     - ollama_run_smoke_test | bool
-    - ollama_unit_present | bool
     - ollama_manage_service | bool
 
 - name: Report the observed Ollama version
@@ -235,5 +381,4 @@
   when:
     - not ansible_check_mode
     - ollama_run_smoke_test | bool
-    - ollama_unit_present | bool
     - ollama_manage_service | bool

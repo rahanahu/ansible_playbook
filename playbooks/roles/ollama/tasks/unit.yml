@@ -1,0 +1,34 @@
+---
+# Read ahead of the template task, and even in check mode, because
+# tasks/service.yml needs to know whether the unit already exists: on a
+# fresh host in check mode the template task below is only predicted, so
+# the unit genuinely does not exist yet, and ansible.builtin.systemd_service
+# unconditionally fails (regardless of check mode) when the requested unit
+# is not found on the host.
+- name: Check whether the Ollama systemd unit already exists
+  ansible.builtin.stat:
+    path: "{{ ollama_unit_path }}"
+  register: ollama_unit_path_stat
+  check_mode: false
+
+- name: Write the base Ollama systemd unit
+  ansible.builtin.template:
+    src: ollama.service.j2
+    dest: "{{ ollama_unit_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify:
+    - Reload systemd for the Ollama units
+    - Restart Ollama
+
+# The Fedora ollama RPM's unit was WantedBy=default.target, so its install
+# left a symlink here. Once the RPM is removed the symlink dangles (it
+# points at a unit file that no longer exists), and this role's own unit is
+# WantedBy=multi-user.target instead, so nothing recreates it.
+- name: Remove the stale default.target.wants symlink left by the Fedora package
+  ansible.builtin.file:
+    path: "/etc/systemd/system/default.target.wants/{{ ollama_service }}"
+    state: absent
+  become: true

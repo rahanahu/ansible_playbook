@@ -1,0 +1,15 @@
+# Managed by the ollama Ansible role. Do not edit by hand.
+[Unit]
+Description=Ollama Service
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+ExecStart={{ ollama_install_bin }} serve
+User={{ ollama_service_user }}
+Group={{ ollama_service_group }}
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
