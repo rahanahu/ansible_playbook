@@ -113,23 +113,29 @@ README.md under "Tool update policy".
   been verified by actually removing the `/srv/ai/models` fstab entry, and
   that is the case `ConditionPathIsMountPoint` exists to cover.
 - The `ollama` role was migrated from the Fedora RPM to the upstream
-  release binary (installed under `/usr/local`), and none of the following
-  has been exercised on real hardware yet:
-  - The migration run itself: removing the Fedora `ollama` package,
-    downloading the ~2.5 GB combined base+ROCm archives to
-    `ollama_download_dir`, extracting them under `/usr/local`, and
-    restarting the service, starting from a host that still has the old
-    RPM-based install.
-  - That a second run against an already-migrated, up-to-date host reports
-    `changed=0` (no redundant re-download/re-extraction).
+  release binary (installed under `/usr/local`). The migration run itself,
+  the second run and GPU inference on the upstream build are recorded under
+  Confirmed below. These remain unverified:
   - Recovery when the ROCm archive extraction is interrupted partway
     through (for example a crash between the base and ROCm `unarchive`
     tasks): whether the `find`-based ROCm-directory re-check in
     `tasks/install.yml`/`tasks/verify.yml` actually triggers a re-run that
-    restores the missing ROCm library directory.
+    restores the missing ROCm library directory. Confirming it would mean
+    deliberately deleting the installed ROCm directory, which has not been
+    done.
   - `--check` behaviour of the current, post-migration role structure on
     both a fresh host (no prior Ollama install at all) and a host mid-way
     through an interrupted install.
+- Whether the role should remove the dependencies the Fedora `ollama` RPM
+  pulled in is unresolved. That cleanup was done by hand with `dnf
+  autoremove` after the migration and reviewed before applying, and the
+  role deliberately does not do it. Automating it is not the narrow change
+  it looks like: Ansible's dnf and dnf5 modules run a system-wide
+  autoremove when `autoremove: true` is set (`dnf.py` calls
+  `base.autoremove()`, `dnf5.py` iterates `get_unneeded_pkgs`), on top of
+  setting `clean_requirements_on_remove`. It is not a cleanup limited to
+  the removed package's own dependencies, which is what the CLI's `dnf
+  remove ollama` does.
 - The service account's home, `/var/lib/ollama`, holds the identity keypair
   Ollama generates on first start and is inside the root subvolume, so it
   is captured by root Snapper snapshots. Only the model store is excluded.
@@ -448,3 +454,45 @@ README.md under "Tool update policy".
   resolves to `FSROOT=/ai-models`; the model store holds 499 MB, while
   `/var/lib/ollama` holds 8.0 KB, which is the identity keypair and no
   blobs.
+- The migration off the Fedora `ollama` RPM ran on this host and the RPM is
+  gone: `rpm -q ollama` reports `package ollama is not installed`.
+  `ollama --version` reports `0.32.15`, not the `0.0.0` Fedora's build
+  reported, and the API agrees: `curl -s
+  http://127.0.0.1:11434/api/version` returns `{"version":"0.32.15"}`.
+  Both are checked because the binary and the running server can disagree.
+- The ROCm payload landed under a versioned directory name rather than a
+  fixed one: `/usr/local/lib/ollama/rocm_v7_2/`. The role globs for
+  `rocm*` instead of testing a literal path, which is why the check passes
+  here; a hard-coded `rocm` would have reported the payload missing.
+- systemd now sources the base unit from the role rather than from a
+  package. `systemctl cat ollama` leads with
+  `# /etc/systemd/system/ollama.service`, and the existing drop-in still
+  applies on top of it: `systemctl show` reports
+  `RequiresMountsFor=/srv/ai/models`,
+  `Environment=OLLAMA_MODELS=/srv/ai/models/ollama` and
+  `SupplementaryGroups=render`. The unit is `enabled` and `active`.
+- The enable symlink left by the packaged unit is gone:
+  `/etc/systemd/system/default.target.wants/ollama.service` does not
+  exist. That matters because the packaged unit was
+  `WantedBy=default.target` while the role's unit is
+  `WantedBy=multi-user.target`, so nothing would have recreated or cleaned
+  up the old link.
+- The migration preserved the model store exactly. `ollama list` reports
+  the same two models with the same IDs and sizes as before it ran:
+  `gemma4:latest` `c6eb396dbd59` 9.6 GB and `qwen3:0.6b` `7df6b6e09427`
+  522 MB. Beforehand the store held 11 files and 9.5 GB on the
+  `/ai-models` subvolume; nothing was re-downloaded.
+- ROCm inference works with the upstream build, not only with Fedora's.
+  The journal's `inference compute` line reports the ROCm library rather
+  than CPU, and `ollama run gemma4` runs on the GPU. That is the point of
+  the migration: Fedora's `ollama-0.12.11-4.fc44` refused the same model
+  with `unknown model architecture: 'gemma4'`.
+- A second run reports no changes for the `ollama` role, so the version
+  gate skips both the download and the extraction. This is the check that
+  matters most for version detection, because `ollama --version` changes
+  its output shape when the daemon is unreachable, and a gate matching
+  only the connected form would have re-downloaded 2.5 GB on every run.
+- The recap figures for the migration run and for the second run were
+  observed at the terminal but not captured into this file, so no
+  `changed=` counts are recorded for them here, unlike the drop-in runs
+  above.
