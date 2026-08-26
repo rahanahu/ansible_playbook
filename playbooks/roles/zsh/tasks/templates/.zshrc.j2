@@ -15,9 +15,6 @@ fi
 autoload -Uz colors
 colors
 
-# emacs 風キーバインドにする
-bindkey -e
-
 # ヒストリの設定
 HISTFILE=~/.zsh_history
 HISTSIZE=1000000
@@ -125,11 +122,43 @@ setopt extended_glob
 ########################################
 # キーバインド
 
-# Home / End (normal and application cursor modes)
-bindkey '^[[H' beginning-of-line
-bindkey '^[[F' end-of-line
-bindkey '^[OH' beginning-of-line
-bindkey '^[OF' end-of-line
+zmodload zsh/terminfo
+
+# 端末キーを terminfo から登録する。terminfo の Home / End / Ctrl+矢印などは
+# application cursor mode 用の ESC O 系列なので、通常モード用の ESC [ 系列も
+# 併せて登録する (Konsole は smkx を送らない限り ESC [ 系列を送るため)。
+#
+# 矢印と Backspace は emacs キーマップに既定で両系列とも登録済みのため対象外。
+# emacs キーマップへ直接登録するので、後段で bindkey -e されても失われない。
+() {
+    local cap widget seq
+
+    for cap widget in \
+        khome  beginning-of-line \
+        kend   end-of-line \
+        kdch1  delete-char \
+        kich1  overwrite-mode \
+        kcbt   reverse-menu-complete \
+        kLFT5  backward-word \
+        kRIT5  forward-word \
+        kLFT3  backward-word \
+        kRIT3  forward-word \
+        kDC5   kill-word \
+        kpp    history-beginning-search-backward \
+        knp    history-beginning-search-forward
+    do
+        seq=${terminfo[$cap]}
+        [[ -n $seq ]] || continue
+
+        bindkey -M emacs -- "$seq" "$widget"
+        if [[ $seq == $'\e'O* ]]; then
+            bindkey -M emacs -- "${seq/O/[}" "$widget"
+        fi
+    done
+}
+
+# キーマップの選択 (emacs)
+bindkey -e
 
 # ^R で履歴検索をするときに * でワイルドカードを使用出来るようにする
 # bindkey '^R' history-incremental-pattern-search-backward
