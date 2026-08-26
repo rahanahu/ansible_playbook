@@ -8,12 +8,12 @@ evidence for the actual changed behavior.
 
 Typical static/local checks:
 
-1. `git diff --check`
-2. YAML/repository formatting checks where applicable
-3. `ansible-lint`
-4. relevant playbook/load/syntax checks
-5. safe targeted `--check` when it adds evidence
-6. repository-specific tests
+- `git diff --check`
+- YAML/repository formatting checks where applicable
+- `ansible-lint`
+- relevant playbook/load/syntax checks
+- safe targeted `--check` when it adds evidence
+- repository-specific tests
 
 `git diff --check` is the normal minimum for code/configuration changes.
 
@@ -23,6 +23,11 @@ be left to CI unless:
 - CI feedback would be unnecessarily slow;
 - the change is risky enough to justify local execution;
 - the user explicitly asks for local validation.
+
+CI runs only on pull requests and on pushes to `main`. While work stays on an
+unpublished branch, "leave it to CI" means no check runs at all. In that state,
+narrow the check to the changed role/playbook instead of skipping lint or syntax
+validation entirely.
 
 Do not execute the same deterministic check twice in different agents without a
 specific reason.

@@ -30,7 +30,8 @@ relevant scope.
 ### Implementation delegation
 
 Use `implementer` only when implementation is large enough that delegation clearly
-reduces main-session context, or when the work can be expressed as a bounded brief.
+reduces main-session context, and the work can be expressed as a bounded brief.
+Being expressible as a bounded brief is not on its own a reason to delegate.
 Pass exact paths, requirements, known facts, and constraints. Do not ask the
 implementer to rediscover information already known by the main session.
 
