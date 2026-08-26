@@ -1,8 +1,12 @@
 # Validation rules
 
-Use the lightest validation that provides meaningful evidence for the change.
+Use proportional validation, not a mandatory validation ladder.
 
-Typical static/local ladder:
+The checks below are available options, ordered roughly from cheap to expensive.
+Do not run all of them by default. Choose only checks that provide meaningful
+evidence for the actual changed behavior.
+
+Typical static/local checks:
 
 1. `git diff --check`
 2. YAML/repository formatting checks where applicable
@@ -10,6 +14,18 @@ Typical static/local ladder:
 4. relevant playbook/load/syntax checks
 5. safe targeted `--check` when it adds evidence
 6. repository-specific tests
+
+`git diff --check` is the normal minimum for code/configuration changes.
+
+Repository-wide `ansible-lint`, syntax checks, and check-mode runs should normally
+be left to CI unless:
+- the changed area is directly covered by the check;
+- CI feedback would be unnecessarily slow;
+- the change is risky enough to justify local execution;
+- the user explicitly asks for local validation.
+
+Do not execute the same deterministic check twice in different agents without a
+specific reason.
 
 Deterministic checks should be repeated by CI when available.
 

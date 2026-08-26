@@ -5,20 +5,57 @@ Use the smallest Claude Code workflow appropriate to the task.
 ## Agent workflow
 
 The main Claude session owns requirement interpretation, ordinary design decisions,
-delegation, synthesis, and the final user-facing report.
+ordinary implementation, delegation, synthesis, and the final user-facing report.
+Subagents are optional specialists, not mandatory workflow stages.
 
-For normal non-trivial changes:
+### Trivial and normal changes
 
-1. Use `repo-explorer` only when broad repository discovery is necessary.
-2. The main session decides the design and gives `implementer` a bounded brief.
-3. `implementer` makes the smallest coherent change and runs fast local checks.
-4. The main session inspects the resulting diff.
-5. Use `reviewer` for independent semantic review.
-6. Return genuine defects to `implementer` for focused fixes.
-7. Rely on deterministic CI as the final automated static gate.
+For trivial and ordinary scoped changes:
 
-For trivial changes, skip agents that add no value. Do not invoke agents merely
-because they exist.
+1. Inspect only the relevant repository context.
+2. Implement directly in the main session.
+3. Run proportional fast validation.
+4. Inspect the resulting diff.
+5. Finish.
+
+Do not invoke a subagent merely because a change is non-trivial.
+
+### Repository exploration
+
+Use `repo-explorer` only when broad repository discovery is necessary to identify
+relevant files, callers, ownership boundaries, or variable flow. Do not use it when
+the user already supplied exact paths or the main session can cheaply identify the
+relevant scope.
+
+### Implementation delegation
+
+Use `implementer` only when implementation is large enough that delegation clearly
+reduces main-session context, or when the work can be expressed as a bounded brief.
+Pass exact paths, requirements, known facts, and constraints. Do not ask the
+implementer to rediscover information already known by the main session.
+
+### Independent review
+
+Use `reviewer` only for changes with meaningful semantic risk. Typical reasons
+include:
+
+- privilege, ownership, or become behavior;
+- destructive operations or migrations;
+- systemd, boot, mount, or service lifecycle behavior;
+- package source or update-policy changes;
+- security-sensitive behavior;
+- public contract changes;
+- cross-role changes;
+- complex fresh-host, upgrade, or second-run semantics;
+- runtime behavior that cannot be confidently inferred from the implementation.
+
+Do not invoke `reviewer` solely because a change is non-trivial. For ordinary local
+changes, main-session diff inspection is sufficient.
+
+If review finds a genuine Critical or Important defect, make the smallest focused
+fix. Do not restart broad repository exploration or the entire implementation
+workflow. Re-run reviewer only when the fix materially changes the behavior under
+review; Minor fixes normally need only main-session inspection.
 
 Do not ask multiple agents to repeat the same repository-wide search. Pass exact
 paths, constraints, and already-measured facts forward instead. Do not assign
@@ -26,6 +63,13 @@ multiple writers to the same files concurrently.
 
 A subagent's final response is its deliverable. Do not ask read-only agents to
 persist reports to repository files.
+
+## Validation
+
+Validation must be proportional to the change. Prefer the cheapest check that
+provides meaningful evidence, and do not repeat deterministic checks across the
+main session, implementer, and reviewer without a concrete reason. Rely on CI for
+repository-wide deterministic checks already covered by CI.
 
 ## Project rules
 
